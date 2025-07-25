@@ -33,7 +33,7 @@ class NetatmoAuthHelper {
         return expireMs > nowMs;
     }
 
-    async startTokenAutoRefresh(tokenData, force = false) {
+    startTokenAutoRefresh(tokenData, force = false) {
         if (tokenData && tokenData.refresh_token && tokenData.expires_in && tokenData.timestamp) {
             if (force) {
                 logger.debug('Mode forcé : le token est rafraîchi immédiatement.');
@@ -71,12 +71,12 @@ class NetatmoAuthHelper {
 
             fs.writeFileSync(this.tokenPath, JSON.stringify(newToken, null, 2));
             logger.info('✅ Token Netatmo rafraîchi avec succès.');
-            tokenData = newToken;
-            // this.startTokenAutoRefresh(tokenData, force);
+            // Relance le refresh automatique avec le nouveau token pour garantir la récursivité
+            this.startTokenAutoRefresh(newToken);
         } catch (err) {
             logger.error('❌ Échec du rafraîchissement du token Netatmo:', err);
         }
-    };
+    }
 
 
     // --- Assistant CLI (conserve la logique existante) ---

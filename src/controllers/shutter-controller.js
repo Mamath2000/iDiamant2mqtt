@@ -1,301 +1,179 @@
+const axios = require('axios');
 const logger = require('../utils/logger');
-const cron = require('node-cron');
+
+const CMD_MAP = {
+    open: 100,
+    close: 0,
+    half_open: -2,
+    stop: -1
+};
 
 class ShutterController {
-  constructor(idiamantClient, mqttClient, config) {
-    this.idiamantClient = idiamantClient;
-    this.mqttClient = mqttClient;
-    this.config = config;
-    this.deviceStates = new Map();
-    this.syncTask = null;
-    this.isRunning = false;
-  }
-
-  async start() {
-    try {
-      logger.info('🎛️ Démarrage du contrôleur de volets...');
-      
-      // Configuration du gestionnaire de commandes MQTT
-      this.mqttClient.setCommandHandler(this.handleMQTTCommand.bind(this));
-      
-      // Découverte et configuration des dispositifs
-      await this.setupDevices();
-      
-      // Démarrage de la synchronisation périodique
-      this.startPeriodicSync();
-      
-      this.isRunning = true;
-      logger.info('✅ Contrôleur de volets démarré');
-      
-    } catch (error) {
-      logger.error('❌ Erreur démarrage contrôleur:', error);
-      throw error;
+    constructor(devicesHandler, mqttClient, config) {
+        this.devicesHandler = devicesHandler;
+        this.mqttClient = mqttClient;
+        this.config = config;
+        this.timers = new Map(); // deviceId -> timer
     }
-  }
 
-  async setupDevices() {
-    try {
-      const devices = this.idiamantClient.getDevices();
-      logger.info(`🔧 Configuration de ${devices.length} dispositifs...`);
-      
-      for (const device of devices) {
-        // Publication de la configuration Home Assistant
-        await this.mqttClient.publishHomeAssistantDiscovery(device);
-        
-        // Souscription aux commandes pour ce dispositif
-        await this.subscribeToDeviceCommands(device.id);
-        
-        // Synchronisation initiale de l'état
-        await this.syncDeviceState(device.id);
-        
-        logger.info(`✅ Dispositif ${device.name} configuré`);
-      }
-      
-    } catch (error) {
-      logger.error('❌ Erreur configuration dispositifs:', error);
-      throw error;
+    listenCommands() {
+        const topic = `${this.config.MQTT_TOPIC_PREFIX}/+/cmd`;
+        this.mqttClient.subscribe(topic, (err) => {
+            if (err) {
+                logger.error('Erreur abonnement au topic de commande:', err);
+                return;
+            }
+            logger.info(`Abonnement réussi au topic de commande: ${topic}`);
+        });
+        this.mqttClient.setCommandHandler(async (deviceId, topic, message) => {
+            try {
+                await this.handleCommand(deviceId, message);
+            } catch (err) {
+                logger.error(`Erreur lors du traitement de la commande ${message} pour ${deviceId}:`, err);
+            }
+        });
     }
-  }
 
-  async subscribeToDeviceCommands(deviceId) {
-    try {
-      const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
-      
-      // Souscription aux commandes de base (OPEN, CLOSE, STOP)
-      await this.mqttClient.subscribe(`${baseTopic}/set`);
-      
-      // Souscription aux commandes de position
-      await this.mqttClient.subscribe(`${baseTopic}/set_position`);
-      
-      logger.debug(`📥 Souscriptions MQTT configurées pour ${deviceId}`);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur souscription dispositif ${deviceId}:`, error);
-      throw error;
-    }
-  }
-
-  async handleMQTTCommand(deviceId, topic, message) {
-    try {
-      logger.info(`🎛️ Commande reçue pour ${deviceId}: ${message}`);
-      
-      const device = this.idiamantClient.getDevice(deviceId);
-      if (!device) {
-        logger.warn(`⚠️ Dispositif inconnu: ${deviceId}`);
-        return;
-      }
-      
-      if (topic.includes('/set_position')) {
-        // Commande de position
-        const position = parseInt(message);
-        if (isNaN(position) || position < 0 || position > 100) {
-          logger.warn(`⚠️ Position invalide pour ${deviceId}: ${message}`);
-          return;
+    async handleCommand(deviceId, cmd) {
+        const device = this.devicesHandler.getDevice(deviceId);
+        if (!device) {
+            logger.error(`Volet ${deviceId} introuvable`);
+            return;
         }
-        
-        await this.setShutterPosition(deviceId, position);
-        
-      } else if (topic.includes('/set')) {
-        // Commandes de base
-        switch (message.toUpperCase()) {
-          case 'OPEN':
-            await this.openShutter(deviceId);
-            break;
-          case 'CLOSE':
-            await this.closeShutter(deviceId);
-            break;
-          case 'STOP':
-            await this.stopShutter(deviceId);
-            break;
-          default:
-            logger.warn(`⚠️ Commande inconnue pour ${deviceId}: ${message}`);
+        if (!Object.prototype.hasOwnProperty.call(CMD_MAP, cmd)) return;
+
+        // Annule toute transition en cours
+        if (this.timers.has(deviceId)) {
+            clearTimeout(this.timers.get(deviceId));
+            this.timers.delete(deviceId);
         }
-      }
-      
-    } catch (error) {
-      logger.error(`❌ Erreur traitement commande ${deviceId}:`, error);
-    }
-  }
 
-  async openShutter(deviceId) {
-    try {
-      logger.info(`🔼 Ouverture du volet ${deviceId}`);
-      
-      await this.idiamantClient.controlShutter(deviceId, 'open');
-      
-      // Mise à jour immédiate de l'état (optimiste)
-      await this.updateDeviceState(deviceId, 'opening', null);
-      
-      // Synchronisation différée pour obtenir l'état réel
-      setTimeout(() => this.syncDeviceState(deviceId), 2000);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur ouverture volet ${deviceId}:`, error);
-      throw error;
-    }
-  }
+        // 1. Envoi commande API Netatmo
+        await this.sendNetatmoCommand(deviceId, cmd);
 
-  async closeShutter(deviceId) {
-    try {
-      logger.info(`🔽 Fermeture du volet ${deviceId}`);
-      
-      await this.idiamantClient.controlShutter(deviceId, 'close');
-      
-      // Mise à jour immédiate de l'état (optimiste)
-      await this.updateDeviceState(deviceId, 'closing', null);
-      
-      // Synchronisation différée pour obtenir l'état réel
-      setTimeout(() => this.syncDeviceState(deviceId), 2000);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur fermeture volet ${deviceId}:`, error);
-      throw error;
-    }
-  }
-
-  async stopShutter(deviceId) {
-    try {
-      logger.info(`⏹️ Arrêt du volet ${deviceId}`);
-      
-      await this.idiamantClient.controlShutter(deviceId, 'stop');
-      
-      // Synchronisation immédiate pour obtenir la position actuelle
-      await this.syncDeviceState(deviceId);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur arrêt volet ${deviceId}:`, error);
-      throw error;
-    }
-  }
-
-  async setShutterPosition(deviceId, position) {
-    try {
-      logger.info(`📍 Position volet ${deviceId}: ${position}%`);
-      
-      await this.idiamantClient.controlShutter(deviceId, 'set_position', position);
-      
-      // Mise à jour immédiate de l'état (optimiste)
-      const state = position === 0 ? 'closed' : position === 100 ? 'open' : 'opening';
-      await this.updateDeviceState(deviceId, state, position);
-      
-      // Synchronisation différée pour obtenir l'état réel
-      setTimeout(() => this.syncDeviceState(deviceId), 3000);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur position volet ${deviceId}:`, error);
-      throw error;
-    }
-  }
-
-  async syncDeviceState(deviceId) {
-    try {
-      const status = await this.idiamantClient.getShutterStatus(deviceId);
-      
-      let state = 'unknown';
-      switch (status.state) {
-        case 'open':
-          state = 'open';
-          break;
-        case 'closed':
-          state = 'closed';
-          break;
-        case 'opening':
-          state = 'opening';
-          break;
-        case 'closing':
-          state = 'closing';
-          break;
-        default:
-          // Détermination de l'état basé sur la position
-          if (status.position === 0) {
-            state = 'closed';
-          } else if (status.position === 100) {
-            state = 'open';
-          } else {
-            state = 'open'; // Position partielle = ouvert
-          }
-      }
-      
-      await this.updateDeviceState(deviceId, state, status.position);
-      
-      logger.debug(`🔄 État synchronisé pour ${deviceId}: ${state} (${status.position}%)`);
-      
-    } catch (error) {
-      logger.error(`❌ Erreur synchronisation ${deviceId}:`, error);
-    }
-  }
-
-  async updateDeviceState(deviceId, state, position) {
-    try {
-      const currentState = this.deviceStates.get(deviceId) || {};
-      
-      // Si la position n'est pas fournie, on conserve la précédente
-      if (position === null || position === undefined) {
-        position = currentState.position || 0;
-      }
-      
-      const newState = {
-        state,
-        position,
-        lastUpdate: Date.now()
-      };
-      
-      // Mise à jour uniquement si l'état a changé
-      if (currentState.state !== state || currentState.position !== position) {
-        this.deviceStates.set(deviceId, newState);
-        
-        // Publication sur MQTT
-        await this.mqttClient.publishShutterState(deviceId, state, position);
-        
-        logger.debug(`📡 État mis à jour pour ${deviceId}: ${state} (${position}%)`);
-      }
-      
-    } catch (error) {
-      logger.error(`❌ Erreur mise à jour état ${deviceId}:`, error);
-      throw error;
-    }
-  }
-
-  startPeriodicSync() {
-    // Synchronisation toutes les 30 secondes (configurable)
-    const interval = Math.max(this.config.SYNC_INTERVAL / 1000, 10); // Minimum 10 secondes
-    const cronExpression = `*/${interval} * * * * *`;
-    
-    this.syncTask = cron.schedule(cronExpression, async () => {
-      if (!this.isRunning) return;
-      
-      try {
-        const devices = this.idiamantClient.getDevices();
-        for (const device of devices) {
-          await this.syncDeviceState(device.id);
+        // 2. Gestion de l'état intermédiaire et publication
+        if (cmd === 'stop') {
+            this.publishState(deviceId, 'stopped');
+            return;
         }
-      } catch (error) {
-        logger.error('❌ Erreur synchronisation périodique:', error);
-      }
-    });
-    
-    logger.info(`⏰ Synchronisation périodique configurée (${interval}s)`);
-  }
 
-  async stop() {
-    this.isRunning = false;
-    
-    if (this.syncTask) {
-      this.syncTask.stop();
-      logger.info('⏰ Synchronisation périodique arrêtée');
+        let targetState = getTransition(device.state, cmd);
+
+        // Publication état intermédiaire
+        this.publishState(deviceId, targetState.transition_state);
+
+        if (targetState.delay > 0) {
+            this.timers.set(deviceId, setTimeout(() => {
+                this.publishState(deviceId, targetState.to_state);
+                // Mise à jour de l'état du device dans le handler
+                device.state = targetState.to_state;
+                this.timers.delete(deviceId);
+            }, targetState.delay)); // Convertit en millisecondes
+            logger.info(`⏳ Transition programmée pour ${deviceId} vers ${targetState.to_state}`);
+        } else {
+            // Publication immédiate si pas de durée
+            this.publishState(deviceId, targetState.to_state);
+            device.state = targetState.to_state;
+        }
     }
-    
-    logger.info('🎛️ Contrôleur de volets arrêté');
-  }
 
-  // Méthodes utilitaires
-  getDeviceState(deviceId) {
-    return this.deviceStates.get(deviceId);
-  }
+    async sendNetatmoCommand(deviceId, cmd) {
+        const payload = {
+            home: {
+                id: this.devicesHandler.homeId,
+                modules: [
+                    {
+                        id: deviceId,
+                        target_position: CMD_MAP[cmd],
+                        bridge: this.devicesHandler.bridgeId
+                    }
+                ]
+            }
+        };
+        try {
+            logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
+            await axios.post(`${this.devicesHandler.apiBase}/api/setstate`, payload, {
+                headers: {
+                    'Authorization': `Bearer ${this.devicesHandler.tokenData.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
+        } catch (err) {
+            logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);
+        }
+    }
 
-  getAllDeviceStates() {
-    return Object.fromEntries(this.deviceStates);
-  }
+    publishState(deviceId, state) {
+        const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
+        // Publications en mode "fire and forget" - pas d'await
+        this.mqttClient.publish(`${baseTopic}/state`, state, { retain: true });
+        this.mqttClient.publish(`${baseTopic}/state_fr`, translate(state), { retain: true });
+        logger.debug(`État publié pour ${deviceId}: ${state} (${translate(state)})`);
+    }
 }
+
+const translate = (state) =>  {
+    switch (state) {
+        case 'open': return 'Ouvert';
+        case 'closed': return 'Fermé';
+        case 'opening': return 'Ouverture';
+        case 'closing': return 'Fermeture';
+        case 'half_open': return 'Mi-ouvert';
+        case 'stopped': return 'Arrêté';
+        default: return 'Inconnu';
+    }
+}
+
+
+const getTransition = (from_state, cmd) => {
+    if (from_state === 'close' || from_state === 'closing') {
+        switch (cmd) {
+            case "open":
+                return { delay: 42000, from_state, transition_state: "opening", to_state: "open" };
+            case "close":
+                return { delay: 0, from_state, transition_state: "closing", to_state: "close" };
+            case "half_open":
+                return { delay: 3000, from_state, transition_state: "opening", to_state: "half_open" };
+            case "stop":
+                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped" };
+        }
+    } else if (from_state === 'open' || from_state === 'opening') {
+        switch (cmd) {
+            case "open":
+                return { delay: 0, from_state, transition_state: "opening", to_state: "open" };
+            case "close":
+                return { delay: 42000, from_state, transition_state: "closing", to_state: "close" };
+            case "half_open":
+                return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open" };
+            case "stop":
+                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped" };
+        }
+    } else if (from_state === 'half_open') {
+        switch (cmd) {
+            case "open":
+                return { delay: 38000, from_state, transition_state: "opening", to_state: "open" };
+            case "close":
+                return { delay: 5000, from_state, transition_state: "closing", to_state: "close" };
+            case "half_open":
+                return { delay: 0, from_state, transition_state: "opening", to_state: "half_open" };
+            case "stop":
+                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped" };
+        }
+    } else {
+        switch (cmd) {
+            case "open":
+                return { delay: 42000, from_state, transition_state: "opening", to_state: "open" };
+            case "close":
+                return { delay: 42000, from_state, transition_state: "closing", to_state: "close" };
+            case "half_open":
+                return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open" };
+            case "stop":
+                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped" };
+        }
+    }
+    // Default fallback
+    return { delay: 0, from_state, transition_state: "unknown", to_state: "unknown" };
+};
 
 module.exports = ShutterController;
