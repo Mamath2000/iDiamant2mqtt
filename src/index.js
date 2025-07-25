@@ -15,22 +15,21 @@ class App {
   async start() {
     try {
       logger.info('🚀 Démarrage de iDiamant2MQTT...');
-      
       // Vérification de la configuration
       this.validateConfig();
-      
-      // Initialisation des clients
-      await this.initializeClients();
-      
-      // Démarrage du contrôleur de volets
-      await this.initializeShutterController();
-      
-      this.isRunning = true;
-      logger.info('✅ iDiamant2MQTT démarré avec succès !');
-      
+
+      // Gestion du token via auth-helper
+      const authHelper = require('./token/auth-helper');
+      const tokenData = authHelper.getTokenData();
+      if (!authHelper.isTokenValid(tokenData)) {
+        logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
+        process.exit(1);
+      }
+      logger.info('✅ Token Netatmo valide. OK');
+      authHelper.startTokenAutoRefresh(tokenData);
+
       // Gestion propre de l'arrêt
       this.setupGracefulShutdown();
-      
     } catch (error) {
       logger.error('❌ Erreur lors du démarrage:', error);
       process.exit(1);
