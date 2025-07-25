@@ -50,9 +50,8 @@ class NetatmoAuthUrlGenerator {
 
     const auth = this.generateAuthUrl();
 
-    logger.info('=== Authentification Netatmo ===');
     logger.info('Ouvrez cette URL dans votre navigateur pour autoriser l\'application :');
-    logger.info(auth.url);
+    logger.info(`${auth.url}`);
     logger.info('Après autorisation, le serveur webhook démarre automatiquement et le token sera sauvegardé.');
 
     // Sauvegarde de l'état pour vérification

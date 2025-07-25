@@ -14,7 +14,6 @@ class NetatmoAuthHelper {
 
   checkConfiguration(preCheck = false) {
     const logLevel = (process.env.LOG_LEVEL || config.LOG_LEVEL || 'info').toLowerCase();
-    logger.info('🔍 Vérification de la configuration...');
 
     let checks = [
       {
