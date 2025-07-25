@@ -1,34 +1,3 @@
-  async publishAuthStatusToHA(tokens) {
-    if (!config.HA_DISCOVERY || config.HA_DISCOVERY.toString().toLowerCase() !== 'true') return;
-    if (!this.mqttClient) return;
-
-    // Sensor: état d'authentification
-    const authStatusTopic = `${config.HA_DISCOVERY_PREFIX}/binary_sensor/idiamant_auth_status/config`;
-    const authStatusPayload = JSON.stringify({
-      name: 'iDiamant Auth Status',
-      unique_id: 'idiamant_auth_status',
-      device_class: 'connectivity',
-      state_topic: `${config.HA_DISCOVERY_PREFIX}/binary_sensor/idiamant_auth_status/state`,
-      availability_topic: `${config.HA_DISCOVERY_PREFIX}/bridge/availability`,
-      device: { name: config.HA_DEVICE_NAME, identifiers: ['idiamant_bridge'] }
-    });
-    this.mqttClient.publish(authStatusTopic, authStatusPayload, { retain: true });
-    this.mqttClient.publish(`${config.HA_DISCOVERY_PREFIX}/binary_sensor/idiamant_auth_status/state`, 'ON', { retain: true });
-
-    // Sensor: temps de validité du token
-    const validityTopic = `${config.HA_DISCOVERY_PREFIX}/sensor/idiamant_token_validity/config`;
-    const validityPayload = JSON.stringify({
-      name: 'iDiamant Token Validity',
-      unique_id: 'idiamant_token_validity',
-      device_class: 'duration',
-      unit_of_measurement: 's',
-      state_topic: `${config.HA_DISCOVERY_PREFIX}/sensor/idiamant_token_validity/state`,
-      availability_topic: `${config.HA_DISCOVERY_PREFIX}/bridge/availability`,
-      device: { name: config.HA_DEVICE_NAME, identifiers: ['idiamant_bridge'] }
-    });
-    this.mqttClient.publish(validityTopic, validityPayload, { retain: true });
-    this.mqttClient.publish(`${config.HA_DISCOVERY_PREFIX}/sensor/idiamant_token_validity/state`, tokens.expires_in.toString(), { retain: true });
-  }
 #!/usr/bin/env node
 
 const http = require('http');
@@ -39,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
 const NetatmoAuthHelper = require('./auth-helper');
+const logger = require('../utils/logger');
 
 /**
  * Serveur webhook pour recevoir le callback OAuth2 de Netatmo
@@ -49,7 +19,7 @@ class NetatmoAuthServer {
     this.port = 3001;
     this.server = null;
     this.mqttClient = null;
-    this.redirectUri = config.NETATMO_REDIRECT_URI || `http://localhost:${this.port}/netatmo/callback`;
+    this.redirectUri = config.NETATMO_REDIRECT_URI;
     // Chargement de l'état sauvegardé
     this.loadAuthState();
   }
@@ -60,16 +30,15 @@ class NetatmoAuthServer {
       if (fs.existsSync(statePath)) {
         const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
         this.expectedState = data.state;
-        console.log('✅ État d\'authentification chargé');
       }
     } catch (error) {
-      console.warn('⚠️  Impossible de charger l\'état d\'authentification');
+      // Silencieux
     }
   }
 
   async connectMQTT() {
     try {
-      console.log('🔌 Connexion au broker MQTT...');
+      logger.info('Connexion au broker MQTT...');
       
       const options = {
         clientId: 'idiamant_auth_server',
@@ -85,17 +54,17 @@ class NetatmoAuthServer {
       
       return new Promise((resolve, reject) => {
         this.mqttClient.on('connect', () => {
-          console.log('✅ Connecté au broker MQTT');
+          logger.info('Connecté au broker MQTT');
           resolve();
         });
 
         this.mqttClient.on('error', (error) => {
-          console.error('❌ Erreur MQTT:', error.message);
+          logger.error('Erreur MQTT:', error.message);
           reject(error);
         });
       });
     } catch (error) {
-      console.error('❌ Erreur connexion MQTT:', error);
+      logger.error('Erreur connexion MQTT:', error);
       throw error;
     }
   }
@@ -112,15 +81,15 @@ class NetatmoAuthServer {
 
       const tokenPath = '/root/iDiamant/temp/.netatmo-tokens.json';
       fs.writeFileSync(tokenPath, JSON.stringify(tokenData, null, 2));
-      console.log('💾 Tokens sauvegardés localement');
+      logger.info('Token sauvegardé localement');
     } catch (error) {
-      console.error('❌ Erreur sauvegarde tokens:', error);
+      logger.error('Erreur sauvegarde tokens:', error);
     }
   }
 
   async exchangeCodeForTokens(code) {
     try {
-      console.log('🔄 Échange du code d\'autorisation...');
+      logger.info('Échange du code d\'autorisation...');
       
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
@@ -142,10 +111,7 @@ class NetatmoAuthServer {
       );
 
       if (response.status === 200) {
-        console.log('✅ Tokens obtenus avec succès');
-        console.log(`   Access token: ${response.data.access_token.substring(0, 20)}...`);
-        console.log(`   Refresh token: ${response.data.refresh_token.substring(0, 20)}...`);
-        console.log(`   Expire dans: ${response.data.expires_in} secondes`);
+        logger.info('Token Netatmo obtenu avec succès');
         
         // Sauvegarde locale uniquement
         await this.saveTokens(response.data);
@@ -158,7 +124,7 @@ class NetatmoAuthServer {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
-      console.error('❌ Erreur échange token:', error.response?.data || error.message);
+      logger.error('Erreur échange token:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -176,27 +142,27 @@ class NetatmoAuthServer {
 
     // Vérification de l'état pour la sécurité
     if (this.expectedState && state !== this.expectedState) {
-      console.error('❌ État OAuth2 invalide');
+      logger.error('❌ État OAuth2 invalide');
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end('<h1>❌ Erreur de sécurité OAuth2</h1><p>État invalide</p>');
       return;
     }
 
     if (error) {
-      console.error('❌ Erreur OAuth2:', error);
+      logger.error('❌ Erreur OAuth2:', error);
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<h1>❌ Erreur d'autorisation</h1><p>${error}</p>`);
       return;
     }
 
     if (!code) {
-      console.error('❌ Code d\'autorisation manquant');
+      logger.error('❌ Code d\'autorisation manquant');
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end('<h1>❌ Code d\'autorisation manquant</h1>');
       return;
     }
 
-    console.log('✅ Code d\'autorisation reçu:', code.substring(0, 20) + '...');
+    logger.info('Code d\'autorisation reçu');
 
     // Échange asynchrone du code contre des tokens
     this.exchangeCodeForTokens(code)
@@ -230,8 +196,7 @@ class NetatmoAuthServer {
         
         // Arrêt automatique du serveur après succès
         setTimeout(() => {
-          console.log('\n🎉 Authentification terminée avec succès !');
-          console.log('🛑 Arrêt du serveur d\'authentification...');
+          logger.info('Authentification terminée. Arrêt du serveur.');
           this.stop();
         }, 2000);
       })
@@ -254,35 +219,31 @@ class NetatmoAuthServer {
       // Validation centralisée via NetatmoAuthHelper
       const helper = new NetatmoAuthHelper();
       if (!helper.checkConfiguration(true)) {
-        helper.displayInstructions();
+        logger.error('Configuration incomplète. Vérifiez votre fichier .env.');
         process.exit(1);
       }
 
-      // Connexion MQTT
       await this.connectMQTT();
 
-      // Création du serveur HTTP
       this.server = http.createServer((req, res) => {
         this.handleCallback(req, res);
       });
 
-      // Démarrage du serveur
       await new Promise((resolve, reject) => {
         this.server.listen(this.port, (error) => {
           if (error) {
             reject(error);
           } else {
-            console.log(`\n🌐 Serveur d'authentification démarré sur http://localhost:${this.port}`);
-            console.log(`📡 Endpoint de callback: ${this.redirectUri}`);
-            console.log('\n⏳ En attente du callback OAuth2...');
-            console.log('💡 Utilisez Ctrl+C pour arrêter le serveur\n');
+            logger.info(`Serveur d'authentification démarré sur http://localhost:${this.port}`);
+            logger.info(`Callback : ${this.redirectUri}`);
+            logger.info('En attente du callback OAuth2...');
             resolve();
           }
         });
       });
 
     } catch (error) {
-      console.error('❌ Erreur démarrage serveur:', error.message);
+      logger.error('Erreur démarrage serveur:', error.message);
       process.exit(1);
     }
   }
@@ -300,12 +261,12 @@ class NetatmoAuthServer {
 
 // Gestion propre de l'arrêt
 process.on('SIGINT', () => {
-  console.log('\n\n🛑 Arrêt du serveur d\'authentification...');
+  logger.warn('🛑 Arrêt du serveur d\'authentification...');
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('\n\n🛑 Arrêt du serveur d\'authentification...');
+  logger.warn('🛑 Arrêt du serveur d\'authentification...');
   process.exit(0);
 });
 

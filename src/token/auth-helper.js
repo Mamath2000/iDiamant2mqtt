@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const config = require('../config/config');
+const logger = require('../utils/logger');
 
 /**
  * Script d'aide pour l'authentification Netatmo
@@ -12,7 +13,8 @@ class NetatmoAuthHelper {
   }
 
   checkConfiguration(preCheck = false) {
-    console.log('🔍 Vérification de la configuration...\n');
+    const logLevel = (process.env.LOG_LEVEL || config.LOG_LEVEL || 'info').toLowerCase();
+    logger.info('🔍 Vérification de la configuration...');
 
     let checks = [
       {
@@ -47,20 +49,22 @@ class NetatmoAuthHelper {
       const value = check.valid ? 
         (check.value.length > 30 ? check.value.substring(0, 30) + '...' : check.value) :
         'NON CONFIGURÉ';
-      
-      console.log(`${status} ${check.name}: ${value}`);
-      
+
+      if (logLevel === 'debug') {
+        logger.debug(`${status} ${check.name}: ${value}`);
+      }
+
       if (!check.valid) {
         allValid = false;
       }
     });
 
-    console.log('');
     
     if (allValid) {
-      console.log('✅ Configuration valide pour l\'authentification\n');
+      if (logLevel === 'debug') logger.debug('');
+      logger.info('✅ Configuration valide pour l\'authentification');
     } else {
-      console.log('❌ Configuration incomplète. Éditez le fichier .env\n');
+      logger.error('❌ Configuration incomplète. Éditez le fichier .env');
       return false;
     }
     
@@ -68,66 +72,13 @@ class NetatmoAuthHelper {
   }
 
   checkExistingTokens() {
-    console.log('🔑 Vérification des tokens existants...\n');
-    
-    if (!fs.existsSync(this.tokenPath)) {
-      console.log('📄 Aucun token trouvé localement');
-      console.log('🚀 Lancez le processus d\'authentification avec: make auth-url\n');
-      return false;
-    }
+    logger.debug('🔍 Vérification des tokens existants...');
 
-    try {
-      const tokenData = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-      const now = Date.now();
-      const tokenAge = now - tokenData.timestamp;
-      const expiresAt = tokenData.timestamp + (tokenData.expires_in * 1000);
-      const isExpired = now > expiresAt;
-      
-      console.log('📄 Tokens trouvés:');
-      console.log(`   Access Token: ${tokenData.access_token.substring(0, 30)}...`);
-      console.log(`   Refresh Token: ${tokenData.refresh_token.substring(0, 30)}...`);
-      console.log(`   Âge: ${Math.floor(tokenAge / 1000 / 60)} minutes`);
-      console.log(`   Statut: ${isExpired ? '❌ EXPIRÉ' : '✅ VALIDE'}`);
-      
-      if (isExpired) {
-        console.log('\n⚠️  Les tokens ont expiré. Relancez l\'authentification.');
-        return false;
-      } else {
-        console.log('\n✅ Tokens valides et utilisables');
-        return true;
-      }
-      
-    } catch (error) {
-      console.log('❌ Erreur lecture tokens:', error.message);
-      return false;
-    }
-  }
-
-  displayInstructions() {
-    console.log('\n📖 INSTRUCTIONS D\'AUTHENTIFICATION NETATMO');
-    console.log('=============================================\n');
-    
-    console.log('📋 Prérequis:');
-    console.log('   1. Compte développeur Netatmo: https://dev.netatmo.com');
-    console.log('   2. Application créée avec les scopes: read_bubendorff write_bubendorff');
-    console.log('   3. Client ID, Client Secret et auth2 webhook url dans .env\n');
-    
-    console.log('🔧 Processus d\'authentification:');
-    console.log('   1. make auth-url     - Générer l\'URL d\'autorisation');
-    console.log('   2. make auth-server  - Démarrer le serveur de callback');
-    console.log('   3. Ouvrir l\'URL dans le navigateur');
-    console.log('   4. Autoriser l\'application');
-    console.log('   5. Les tokens seront automatiquement sauvegardés\n');
-    
-    console.log('🛠️  Dépannage:');
-    console.log('   - Vérifiez que le broker MQTT fonctionne: mosquitto_pub -h localhost -t test -m hello');
-    console.log('   - Vérifiez les logs: tail -f logs/combined.log');
-    console.log('   - Port 3001 libre pour le callback');
-    console.log('   - URL de redirection correcte dans l\'app Netatmo\n');
+    return true;
   }
 
   run() {
-    console.log('🔧 ASSISTANT D\'AUTHENTIFICATION NETATMO\n');
+    logger.info('🔧 ASSISTANT D\'AUTHENTIFICATION NETATMO');
     
     const configValid = this.checkConfiguration();
     if (!configValid) {
@@ -138,12 +89,11 @@ class NetatmoAuthHelper {
     const tokensValid = this.checkExistingTokens();
     
     if (tokensValid) {
-      console.log('🎉 Tout est prêt ! Vous pouvez démarrer l\'application avec: make start\n');
+      logger.info('🎉 Tout est prêt ! Vous pouvez démarrer l\'application avec: make start');
     } else {
-      console.log('🚀 Commandes à exécuter:');
-      console.log('   1. make auth-url');
-      console.log('   2. make auth-server (dans un autre terminal)');
-      console.log('   3. Ouvrir l\'URL générée dans votre navigateur\n');
+      logger.info('🚀 Commandes à exécuter:');
+      logger.info('   1. make auth-url');
+      logger.info('   2. Ouvrir l\'URL générée dans votre navigateur');
     }
   }
 }

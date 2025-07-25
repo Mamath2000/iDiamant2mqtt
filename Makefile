@@ -127,7 +127,7 @@ install-dev-tools:
 # Commandes d'authentification Netatmo
 auth-url:
 	@echo "$(GREEN)Génération de l'URL d'autorisation OAuth2...$(NC)"
-	node src/token/auth-url-generator.js
+	@node src/token/auth-url-generator.js
 
 auth-server:
 	@echo "$(GREEN)Démarrage du serveur d'authentification...$(NC)"

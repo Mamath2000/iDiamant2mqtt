@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const config = require('../config/config');
 const NetatmoAuthHelper = require('./auth-helper');
+const logger = require('../utils/logger');
 
 /**
  * Générateur d'URL d'autorisation OAuth2 pour Netatmo
@@ -43,29 +44,16 @@ class NetatmoAuthUrlGenerator {
 
   async displayInstructions() {
     if (!this.authHelper.checkConfiguration(true)) {
+      logger.error('❌ Configuration incomplète. Vérifiez votre fichier .env.');
       process.exit(1);
     }
 
     const auth = this.generateAuthUrl();
 
-    console.log('\n🔑 PROCESSUS D\'AUTHENTIFICATION NETATMO');
-    console.log('=========================================\n');
-
-    console.log('📋 Informations:');
-    console.log(`   Client ID: ${this.clientId}`);
-    console.log(`   Redirect URI: ${auth.redirectUri}`);
-    console.log(`   Scope: ${this.scope}`);
-    console.log(`   State: ${auth.state}\n`);
-
-    console.log('🌐 URL d\'autorisation:');
-    console.log(`   ${auth.url}\n`);
-
-    console.log('📝 Instructions:');
-    console.log('   1. Le serveur webhook va démarrer automatiquement...');
-    console.log('   2. Ouvrez l\'URL ci-dessus dans votre navigateur');
-    console.log('   3. Connectez-vous à votre compte Netatmo');
-    console.log('   4. Autorisez l\'application');
-    console.log('   5. Le token sera automatiquement sauvegardé\n');
+    logger.info('=== Authentification Netatmo ===');
+    logger.info('Ouvrez cette URL dans votre navigateur pour autoriser l\'application :');
+    logger.info(auth.url);
+    logger.info('Après autorisation, le serveur webhook démarre automatiquement et le token sera sauvegardé.');
 
     // Sauvegarde de l'état pour vérification
     require('fs').writeFileSync(
@@ -73,14 +61,13 @@ class NetatmoAuthUrlGenerator {
       JSON.stringify({ state: auth.state, timestamp: Date.now() })
     );
 
-    // Démarrage automatique du serveur webhook
-    console.log('\n🚀 Démarrage du serveur webhook...\n');
+    logger.info('Démarrage du serveur webhook...');
     try {
       const NetatmoAuthServer = require('./auth-server');
       const server = new NetatmoAuthServer();
       await server.start();
     } catch (err) {
-      console.error('❌ Impossible de démarrer le serveur webhook:', err.message);
+      logger.error('Erreur serveur webhook:', err.message);
     }
   }
 }

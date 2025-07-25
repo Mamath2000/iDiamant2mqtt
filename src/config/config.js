@@ -36,6 +36,7 @@ const config = {
 };
 
 // Validation des configurations critiques
+const logger = require('../utils/logger');
 if (config.NODE_ENV === 'production') {
   const requiredFields = [
     'IDIAMANT_CLIENT_ID',
@@ -43,10 +44,9 @@ if (config.NODE_ENV === 'production') {
     'IDIAMANT_USERNAME',
     'IDIAMANT_PASSWORD'
   ];
-  
   const missingFields = requiredFields.filter(field => !config[field]);
   if (missingFields.length > 0) {
-    console.error(`❌ Configuration manquante en production: ${missingFields.join(', ')}`);
+    logger.error(`Configuration manquante en production: ${missingFields.join(', ')}`);
     process.exit(1);
   }
 }
