@@ -29,6 +29,14 @@ help:
 	@echo "  $(GREEN)make docker-build$(NC) - Construction de l'image Docker"
 	@echo "  $(GREEN)make docker-run$(NC)  - Lancement du conteneur Docker"
 	@echo ""
+	@echo "$(YELLOW)Authentification Netatmo :$(NC)"
+	@echo "  $(GREEN)make auth-url$(NC)    - Générer l'URL d'autorisation OAuth2"
+	@echo "  $(GREEN)make auth-server$(NC) - Démarrer le serveur de callback"
+	@echo "  $(GREEN)make auth-help$(NC)   - Aide sur l'authentification"
+	@echo ""
+	@echo "$(YELLOW)Tests et diagnostics :$(NC)"
+	@echo "  $(GREEN)make test-mqtt$(NC)   - Tester la connexion MQTT"
+	@echo ""
 
 # Configuration initiale
 setup: install
@@ -115,3 +123,20 @@ install-dev-tools:
 
 # Par défaut, afficher l'aide
 .DEFAULT_GOAL := help
+
+# Commandes d'authentification Netatmo
+auth-url:
+	@echo "$(GREEN)Génération de l'URL d'autorisation OAuth2...$(NC)"
+	node src/token/auth-url-generator.js
+
+auth-server:
+	@echo "$(GREEN)Démarrage du serveur d'authentification...$(NC)"
+	node src/token/auth-server.js
+
+auth-help:
+	@node src/token/auth-helper.js
+
+# Tests et diagnostics
+test-mqtt:
+	@echo "$(GREEN)Test de connexion MQTT...$(NC)"
+	node temp/mqtt-test.js
