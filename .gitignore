@@ -1,0 +1,51 @@
+# Logs
+logs/
+*.log
+
+# Dépendances
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variables d'environnement
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Fichiers de cache
+.npm
+.yarn-integrity
+.cache/
+
+# Couverture de tests
+coverage/
+.nyc_output
+
+# Fichiers temporaires
+.tmp/
+temp/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Fichiers d'éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Fichiers de configuration spécifiques
+config/local.js
+config/production.js
+
+# Fichiers de sauvegarde
+*.bak
+*.backup
+
+# Docker
+.dockerignore
