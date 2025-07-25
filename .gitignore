@@ -43,6 +43,9 @@ Thumbs.db
 config/local.js
 config/production.js
 
+# Dossier de données (états persistés)
+data/
+
 # Fichiers de sauvegarde
 *.bak
 *.backup

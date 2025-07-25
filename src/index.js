@@ -1,14 +1,11 @@
 const logger = require('./utils/logger');
 const config = require('./config/config');
-// const IDiamantClient = require('./services/idiamant-client');
 const MQTTClient = require('./services/mqtt-client');
-// const ShutterController = require('./controllers/shutter-controller');
 const NetatmoAuthHelper = require('./token/auth-helper');
 const IDiamantDevicesHandler = require('./services/idiamant-devices');
 
 class App {
     constructor() {
-        this.idiamantClient = null;
         this.mqttClient = null;
         this.shutterController = null;
         this.isRunning = false;
@@ -87,10 +84,6 @@ class App {
 
                     if (this.mqttClient) {
                         await this.mqttClient.disconnect();
-                    }
-
-                    if (this.idiamantClient) {
-                        await this.idiamantClient.disconnect();
                     }
 
                     logger.info('👋 Arrêt propre terminé');
