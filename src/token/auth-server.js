@@ -85,6 +85,8 @@ class NetatmoAuthServer {
     } catch (error) {
       logger.error('Erreur sauvegarde tokens:', error);
     }
+
+    NetatmoAuthHelper.removeAuthStateFile();
   }
 
   async exchangeCodeForTokens(code) {

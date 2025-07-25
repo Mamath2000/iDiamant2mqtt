@@ -31,7 +31,6 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Authentification Netatmo :$(NC)"
 	@echo "  $(GREEN)make auth-url$(NC)    - Générer l'URL d'autorisation OAuth2"
-	@echo "  $(GREEN)make auth-server$(NC) - Démarrer le serveur de callback"
 	@echo "  $(GREEN)make auth-help$(NC)   - Aide sur l'authentification"
 	@echo ""
 	@echo "$(YELLOW)Tests et diagnostics :$(NC)"
@@ -128,10 +127,6 @@ install-dev-tools:
 auth-url:
 	@echo "$(GREEN)Génération de l'URL d'autorisation OAuth2...$(NC)"
 	@node src/token/auth-url-generator.js
-
-auth-server:
-	@echo "$(GREEN)Démarrage du serveur d'authentification...$(NC)"
-	node src/token/auth-server.js
 
 auth-help:
 	@node src/token/auth-helper.js
