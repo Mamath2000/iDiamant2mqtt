@@ -24,18 +24,6 @@ class App {
             this.mqttClient = new MQTTClient(config);
             await this.mqttClient.connect();
             logger.info('✅ Client MQTT connecté');
-            // await new Promise((resolve, reject) => {
-            //     this.mqttClient.on('connect', () => {
-            //         logger.info('✅ Connecté au broker MQTT');
-            //         resolve();
-            //     });
-            //     this.mqttClient.on('error', (err) => {
-            //         logger.error('❌ Erreur MQTT:', err);
-            //         reject(err);
-            //     });
-            // });
-
-
 
             // Gestion du token via auth-helper
             const authHelper = new NetatmoAuthHelper();
