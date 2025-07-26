@@ -172,43 +172,31 @@ class IDiamantDevicesHandler {
         });
     }
 
-    async publishShutterStatusToMqtt() {
+    publishShutterStatusToMqtt() {
         const publishAsync = (topic, message, options) => {
-            return new Promise((resolve, reject) => {
-                this.mqttClient.publish(topic, message, options, (err) => {
-                    if (err) {
-                        logger.error(`Erreur publication MQTT sur ${topic}:`, err);
-                        reject(err);
-                    } else {
-                        logger.debug(`MQTT publié: ${topic} => ${message}`);
-                        resolve();
-                    }
-                });
+            this.mqttClient.publish(topic, message, options, (err) => {
+                if (err) {
+                    logger.error(`Erreur publication MQTT sur ${topic}:`, err);
+                } else {
+                    logger.debug(`MQTT publié: ${topic} => ${message}`);
+                }
             });
         };
 
-        const tasks = [];
-        // Publication des états des volets
-
-        tasks.push(publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true }));
+        // Publication des états des volets (send and forget)
+        publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true });
         this.devices.forEach(device => {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;
-            const attributes = JSON.stringify({
-                id: device.id,
-                name: device.name,
-                reachable: device.reachable,
-                last_seen: device.last_seen,
-                current_position: device.current_position,
-                is_close: device.is_close,
-                is_open: device.is_open
-            });
-            tasks.push(publishAsync(`${baseTopic}/lwt`, (device.reachable ? 'online' : 'offline'), { retain: true }));
-            // tasks.push(publishAsync(`${baseTopic}/state`, device.state, { retain: true }));
-            tasks.push(publishAsync(`${baseTopic}/state_fr`, translate(device.state), { retain: true }));
-            tasks.push(publishAsync(`${baseTopic}/name`, device.name.charAt(0).toUpperCase() + device.name.slice(1), { retain: true }));
-            tasks.push(publishAsync(`${baseTopic}/attribute`, attributes, { retain: false }));
+            publishAsync(`${baseTopic}/lwt`, (device.reachable ? 'online' : 'offline'), { retain: true });
+            publishAsync(`${baseTopic}/name`, String(device.name.charAt(0).toUpperCase() + device.name.slice(1)), { retain: true });
+            // publishAsync(`${baseTopic}/state`, String(device.state), { retain: true });
+            publishAsync(`${baseTopic}/state_fr`, String(translate(device.state)), { retain: true });
+            publishAsync(`${baseTopic}/reachable`, String(device.reachable), { retain: false });
+            publishAsync(`${baseTopic}/last_seen`, String(device.last_seen), { retain: true });
+            publishAsync(`${baseTopic}/is_close`, String(device.is_close), { retain: true });
+            publishAsync(`${baseTopic}/is_open`, String(device.is_open), { retain: true });
+            publishAsync(`${baseTopic}/current_position`, String(device.current_position), { retain: true });
         });
-        await Promise.all(tasks);
     }
 
     updateDeviceState(deviceId, newState) {

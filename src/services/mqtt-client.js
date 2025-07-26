@@ -40,7 +40,7 @@ class MQTTClient {
 
                 // Will message pour signaler la déconnexion
                 options.will = {
-                    topic: `${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`,
+                    topic: `${this.config.MQTT_TOPIC_PREFIX}/lwt`,
                     payload: 'offline',
                     qos: 1,
                     retain: true
@@ -53,7 +53,7 @@ class MQTTClient {
                     logger.info('✅ Connexion MQTT établie');
 
                     // Publication du statut en ligne
-                    this.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, 'online', { retain: true });
+                    this.publish(`${this.config.MQTT_TOPIC_PREFIX}/lwt`, 'online', { retain: true });
 
                     resolve();
                 });
