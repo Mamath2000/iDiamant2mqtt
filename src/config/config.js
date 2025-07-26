@@ -14,9 +14,10 @@ const config = {
   MQTT_USERNAME: process.env.MQTT_USERNAME,
   MQTT_PASSWORD: process.env.MQTT_PASSWORD,
   MQTT_CLIENT_ID: process.env.MQTT_CLIENT_ID || 'idiamant2mqtt',
-  MQTT_TOPIC_PREFIX: process.env.MQTT_TOPIC_PREFIX || 'homeassistant/cover',
+  MQTT_TOPIC_PREFIX: process.env.MQTT_TOPIC_PREFIX || 'idiamant',
   
   // Configuration Home Assistant
+  HA_DISCOVERY: process.env.HA_DISCOVERY ? String(process.env.HA_DISCOVERY).toLowerCase() === 'true' : false,
   HA_DISCOVERY_PREFIX: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
   HA_DEVICE_NAME: process.env.HA_DEVICE_NAME || 'iDiamant Bridge',
   
