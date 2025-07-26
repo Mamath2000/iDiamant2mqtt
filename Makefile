@@ -113,4 +113,4 @@ uninstall-service:
 # Installation du service systemd
 install-service:
 	@echo "Installation du service systemd idiamant2mqtt..."
-	@bash install-systemd-service.sh
+	@bash scripts/install-systemd-service.sh
