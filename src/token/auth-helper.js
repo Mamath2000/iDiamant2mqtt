@@ -54,12 +54,12 @@ class NetatmoAuthHelper {
         try {
             logger.info('🔄 Rafraîchissement du token Netatmo...');
             const response = await axios.post('https://api.netatmo.com/oauth2/token',
-                {
+                qs.stringify({
                     grant_type: 'refresh_token',
                     refresh_token: tokenData.refresh_token,
                     client_id: config.IDIAMANT_CLIENT_ID,
                     client_secret: config.IDIAMANT_CLIENT_SECRET
-                },
+                }),
                 {
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
