@@ -157,7 +157,7 @@ const getTransition = (from_state, cmd) => {
             case "open":
                 return { delay: 38000, from_state, transition_state: "opening", to_state: "open" };
             case "close":
-                return { delay: 5000, from_state, transition_state: "closing", to_state: "closed" };
+                return { delay: 7000, from_state, transition_state: "closing", to_state: "closed" };
             case "half_open":
                 return { delay: 0, from_state, transition_state: "opening", to_state: "half_open" };
             case "stop":

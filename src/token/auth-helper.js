@@ -29,7 +29,7 @@ class NetatmoAuthHelper {
         const nowMs = Date.now();
         const expireMs = tokenData.timestamp + (tokenData.expires_in * 1000);
         const expireDate = new Date(expireMs);
-        logger.debug(`Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
+        logger.info(`Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
         return expireMs > nowMs;
     }
 

@@ -11,7 +11,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help install dev start test lint clean docker-build docker-run setup auth-url
+.PHONY: help install dev start test lint clean docker-build docker-run setup auth-url install-service uninstall-service
 
 # Affichage de l'aide
 help:
@@ -25,6 +25,8 @@ help:
 	@echo "  $(GREEN)make clean$(NC)       - Nettoyage des fichiers temporaires"
 	@echo "  $(GREEN)make docker-build$(NC) - Construction de l'image Docker"
 	@echo "  $(GREEN)make docker-run$(NC)  - Lancement du conteneur Docker"
+	@echo "  $(GREEN)make install-service$(NC)   - Installer le service systemd (démarrage auto)"
+	@echo "  $(GREEN)make uninstall-service$(NC) - Désinstaller le service systemd"
 	@echo ""
 	@echo "$(YELLOW)Authentification Netatmo :$(NC)"
 	@echo "  $(GREEN)make auth-url$(NC)    - Générer l'URL d'autorisation OAuth2"
@@ -95,3 +97,20 @@ check-env:
 auth-url:
 	@echo "$(GREEN)Génération de l'URL d'autorisation OAuth2...$(NC)"
 	@node src/token/auth-url-generator.js
+
+# Désinstallation du service systemd
+uninstall-service:
+	@echo "Suppression du service systemd idiamant2mqtt..."
+	sudo systemctl stop idiamant2mqtt.service || true
+	sudo systemctl disable idiamant2mqtt.service || true
+	sudo rm -f /etc/systemd/system/idiamant2mqtt.service
+	sudo systemctl daemon-reload
+	@echo "Service supprimé. Utilisez 'sudo systemctl status idiamant2mqtt' pour vérifier."
+
+# Astuce :
+# Pour installer le service : make install-service
+# Pour désinstaller : make uninstall-service
+# Installation du service systemd
+install-service:
+	@echo "Installation du service systemd idiamant2mqtt..."
+	@bash install-systemd-service.sh
