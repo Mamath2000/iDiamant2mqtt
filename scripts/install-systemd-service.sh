@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-TEMPLATE="../src/config/idiamant2mqtt.service.template"
+TEMPLATE="src/config/idiamant2mqtt.service.template"
 TARGET="/etc/systemd/system/idiamant2mqtt.service"
 USER_NAME="$(whoami)"
 WORKDIR="$(pwd)"

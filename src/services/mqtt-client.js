@@ -239,66 +239,6 @@ class MQTTClient {
         }
     }
 
-    // // Publication de la configuration Home Assistant Discovery
-    // async publishHomeAssistantDiscovery(device) {
-    //     try {
-    //         const deviceConfig = {
-    //             name: device.name,
-    //             unique_id: `idiamant_${device.id}`,
-    //             device_class: 'shutter',
-    //             command_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set`,
-    //             state_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/state`,
-    //             position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/position`,
-    //             set_position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set_position`,
-    //             payload_open: 'OPEN',
-    //             payload_close: 'CLOSE',
-    //             payload_stop: 'STOP',
-    //             state_open: 'open',
-    //             state_closed: 'closed',
-    //             position_open: 100,
-    //             position_closed: 0,
-    //             optimistic: false,
-    //             retain: true,
-    //             device: {
-    //                 identifiers: [`idiamant_${device.id}`],
-    //                 name: device.name,
-    //                 model: 'iDiamant Shutter',
-    //                 manufacturer: 'Bubendorff',
-    //                 via_device: this.config.HA_DEVICE_NAME
-    //             }
-    //         };
-
-    //         const discoveryTopic = `${this.config.HA_DISCOVERY_PREFIX}/cover/idiamant_${device.id}/config`;
-
-    //         await this.publish(discoveryTopic, JSON.stringify(deviceConfig), { retain: true });
-
-    //         this.publishedDevices.add(device.id);
-    //         logger.info(`🏠 Configuration Home Assistant publiée pour ${device.name}`);
-
-    //     } catch (error) {
-    //         logger.error(`❌ Erreur publication HA Discovery pour ${device.name}:`, error);
-    //         throw error;
-    //     }
-    // }
-
-    // // Publication du statut d'un volet
-    // async publishShutterState(deviceId, state, position) {
-    //     try {
-    //         const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
-
-    //         await Promise.all([
-    //             this.publish(`${baseTopic}/state`, state, { retain: true }),
-    //             this.publish(`${baseTopic}/position`, position.toString(), { retain: true })
-    //         ]);
-
-    //         logger.debug(`📡 Statut volet ${deviceId} publié: ${state} (${position}%)`);
-
-    //     } catch (error) {
-    //         logger.error(`❌ Erreur publication statut volet ${deviceId}:`, error);
-    //         throw error;
-    //     }
-    // }
-
     async disconnect() {
         if (this.client && this.isConnected) {
             logger.info('🔌 Déconnexion du client MQTT');

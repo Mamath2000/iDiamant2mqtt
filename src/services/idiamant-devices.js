@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const NetatmoAuthHelper = require('../token/auth-helper');
+const haDiscoveryHelper = require('./ha-discovery-helper');
+const { formatDate } = require('../utils/date');
 
 class IDiamantDevicesHandler {
     constructor(config, tokenData, mqttClient = null) {
@@ -14,7 +16,8 @@ class IDiamantDevicesHandler {
         this.mqttClient = mqttClient;
         this.config = config;
         this.statusInterval = null;
-        // this._refreshTimeout = null;
+        this.haDiscoveryInterval = null;
+        this.HADiscoveryHelper = new haDiscoveryHelper(this.mqttClient, this.config);
         this.authHelper = new NetatmoAuthHelper();
         this.authHelper.setTokenRefreshHandler(this.tokenRefreshHandler.bind(this));
     }
@@ -67,6 +70,19 @@ class IDiamantDevicesHandler {
                 }
             }, 20000); // 20 secondes
 
+            // Publication des composants Home Assistant
+            if (this.haDiscoveryInterval) {
+                clearInterval(this.haDiscoveryInterval);
+            }
+            if (this.mqttClient && this.bridgeId) {
+                await this.publishHADiscoveryComponents(this.bridgeId);
+            }
+            this.haDiscoveryInterval = setInterval(() => {
+                if (this.mqttClient && this.bridgeId) {
+                    this.publishHADiscoveryComponents(this.bridgeId);
+                }
+            }, 600000); // 10 minutes
+
             return this.updateShutterStatus()
                 .then(() => {
                     logger.debug(`🔍 ${this.devices.size} l'état des volets Bubendorff découverts`);
@@ -78,6 +94,21 @@ class IDiamantDevicesHandler {
         }).catch(err => {
             logger.error('❌ Erreur lors de l\'initialisation des devices Netatmo:', err);
             return false;
+        });
+    }
+
+    async publishHADiscoveryComponents(bridgeId) {
+        if (!this.mqttClient) {
+            logger.warn('⚠️ Client MQTT non initialisé ou découverte Home Assistant désactivée');
+            return;
+        } 
+        if (!this.config.HA_DISCOVERY) return;
+        
+        logger.info('📡 Publication des composants Home Assistant pour le pont Idéamant...');
+        this.HADiscoveryHelper.publishGatewayComponents(bridgeId)
+        logger.info('📡 Publication des composants Home Assistant pour les volets...');
+        this.devices.forEach(device => {
+            this.HADiscoveryHelper.publishShutterComponents(device, bridgeId);
         });
     }
 
@@ -186,66 +217,10 @@ class IDiamantDevicesHandler {
         this.tokenData = newTokenData;
         logger.info('🔄 Token Netatmo mis à jour dans devicesHandler via callback.');
         if (this.mqttClient) {
-            this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, String(new Date(this.tokenData.timestamp + (this.tokenData.expires_in * 1000))), { retain: true });
+            this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
             this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
         }
-        // NE PAS relancer startTokenAutoRefresh ou initialize ici !
     }
-
-    // startTokenAutoRefresh(force = false) {
-    //     if (this.tokenData && this.tokenData.refresh_token && this.tokenData.expires_in && this.tokenData.timestamp) {
-    //         if (this._refreshTimeout) clearTimeout(this._refreshTimeout);
-
-    //         if (force) {
-    //             logger.debug('Mode forcé : le token est rafraîchi immédiatement.');
-    //             this._refreshTimeout = setTimeout(() => this.refreshToken(), 1000);
-    //         } else {
-    //             const expireMs = this.tokenData.timestamp + (this.tokenData.expires_in * 1000);
-    //             const nowMs = Date.now();
-    //             let delayMs = expireMs - nowMs - (5 * 60 * 1000); // rafraîchir 5 min avant expiration
-    //             if (delayMs < 1000) delayMs = 1000;
-    //             logger.debug(`Le token sera rafraîchi dans ${Math.round(delayMs / 1000)} secondes.`);
-    //             this._refreshTimeout = setTimeout(() => this.refreshToken(), delayMs);
-    //         }
-    //     }
-    // }    
-    // async refreshToken() {
-    //     try {
-    //         logger.info('🔄 Rafraîchissement du token Netatmo (via devicesHandler)...');
-    //         const response = await axios.post('https://api.netatmo.com/oauth2/token',
-    //             qs.stringify({
-    //                 grant_type: 'refresh_token',
-    //                 refresh_token: this.tokenData.refresh_token,
-    //                 client_id: this.config.IDIAMANT_CLIENT_ID,
-    //                 client_secret: this.config.IDIAMANT_CLIENT_SECRET
-    //             }),
-    //             {
-    //                 headers: {
-    //                     'Content-Type': 'application/x-www-form-urlencoded'
-    //                 }
-    //             }
-    //         );
-    //         const newToken = response.data;
-    //         newToken.timestamp = Date.now();
-
-    //         // Met à jour le token en mémoire
-    //         this.tokenData = newToken;
-
-    //         // Sauvegarde sur disque si besoin (optionnel)
-    //         const tokenPath = path.join(process.cwd(), 'temp', '.netatmo-tokens.json');
-    //         fs.writeFileSync(tokenPath, JSON.stringify(newToken, null, 2));
-    //         logger.info('✅ Token Netatmo rafraîchi avec succès (via devicesHandler).');
-
-    //         // publication de la date de validité du token
-    //         if (this.mqttClient) {
-    //             this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, String(new Date(this.tokenData.timestamp + (this.tokenData.expires_in * 1000))), { retain: true });
-    //             this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-    //         }
-    //         this.startTokenAutoRefresh();
-    //     } catch (err) {
-    //         logger.error('❌ Échec du rafraîchissement du token Netatmo (via devicesHandler):', err);
-    //     }
-    // }
 
     publishShutterStatusToMqtt() {
         const publishAsync = (topic, message, options) => {
@@ -260,8 +235,8 @@ class IDiamantDevicesHandler {
 
         // Publication des états des volets (send and forget)
         publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true });
-        publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, String(new Date(this.tokenData.timestamp + (this.tokenData.expires_in * 1000))), { retain: true });
-        publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+        this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+        this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
 
         this.devices.forEach(device => {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;
