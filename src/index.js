@@ -30,10 +30,12 @@ class App {
                 logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
                 process.exit(1);
             }
-            logger.info('✅ Token Netatmo valide. OK');
-            authHelper.startTokenAutoRefresh(tokenData);
-
+            
             const devicesHandler = new IDiamantDevicesHandler(config, tokenData, this.mqttClient);
+            logger.info('✅ Token Netatmo valide. OK');
+            devicesHandler.startTokenAutoRefresh();
+
+            logger.info('✅ Initialisation des appareils Netatmo...');
             devicesHandler.initialize().then(success => {
                 if (success) {
                     logger.info('✅ Appareils initialisés avec succès');

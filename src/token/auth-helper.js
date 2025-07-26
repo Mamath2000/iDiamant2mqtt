@@ -10,6 +10,7 @@ class NetatmoAuthHelper {
     constructor() {
         // Chemin absolu depuis la racine du projet
         this.tokenPath = path.join(process.cwd(), 'temp', '.netatmo-tokens.json');
+        this.tokenRefreshHandler = null;
     }
 
     getTokenData() {
@@ -71,13 +72,16 @@ class NetatmoAuthHelper {
 
             fs.writeFileSync(this.tokenPath, JSON.stringify(newToken, null, 2));
             logger.info('✅ Token Netatmo rafraîchi avec succès.');
+            
+            // publication de l'état du token
+            this.publishTokenState(newToken);
+
             // Relance le refresh automatique avec le nouveau token pour garantir la récursivité
             this.startTokenAutoRefresh(newToken);
         } catch (err) {
             logger.error('❌ Échec du rafraîchissement du token Netatmo:', err);
         }
     }
-
 
     // --- Assistant CLI (conserve la logique existante) ---
     checkConfiguration(preCheck = false) {
@@ -129,30 +133,16 @@ class NetatmoAuthHelper {
         return true;
     }
 
-    // checkExistingTokens() {
-    //   logger.debug('🔍 Vérification des tokens existants...');
-    //   // Ici on pourrait utiliser getTokenData/isTokenValid pour vérifier
-    //   const tokenData = this.getTokenData();
-    //   return this.isTokenValid(tokenData);
-    // }
+    setTokenRefreshHandler(handler) {
+        this.tokenRefreshHandler = handler;
+    }
 
-    // run() {
-    //     logger.info('🔧 ASSISTANT D\'AUTHENTIFICATION NETATMO');
-    //     const configValid = this.checkConfiguration();
-    //     if (!configValid) {
-    //         this.displayInstructions();
-    //         return;
-    //     }
-    //     const tokensValid = this.checkExistingTokens();
-    //     if (tokensValid) {
-    //         logger.info('🎉 Tout est prêt ! Vous pouvez démarrer l\'application avec: make start');
-    //         NetatmoAuthHelper.removeAuthStateFile();
-    //     } else {
-    //         logger.info('🚀 Commandes à exécuter:');
-    //         logger.info('   1. make auth-url');
-    //         logger.info('   2. Ouvrir l\'URL générée dans votre navigateur');
-    //     }
-    // }
+    publishTokenState(tokenData) {
+        if (this.tokenRefreshHandler) {
+            this.tokenRefreshHandler(tokenData);
+        }
+        // Tu peux aussi publier sur MQTT ici si besoin
+    }
 
     // Suppression du fichier .auth-state après la première authentification
     static removeAuthStateFile() {
@@ -171,11 +161,5 @@ class NetatmoAuthHelper {
         logger.info('👉 Veuillez compléter la configuration dans le fichier .env avant de poursuivre.');
     }
 }
-
-// // Exécution si appelé directement
-// if (require.main === module) {
-//   const helper = new NetatmoAuthHelper();
-//   helper.run();
-// }
 
 module.exports = NetatmoAuthHelper;

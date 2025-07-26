@@ -35,6 +35,14 @@ class ShutterController {
     }
 
     async handleCommand(deviceId, cmd) {
+
+        if (deviceId === 'bridge') {
+            logger.info(`Commande reçue pour le bridge : ${cmd}.`);
+            if (cmd === 'refreshToken') {
+                await this.devicesHandler.startTokenAutoRefresh(true);
+            }
+            return;
+        }
         const device = this.devicesHandler.getDevice(deviceId);
         if (!device) {
             logger.error(`Volet ${deviceId} introuvable`);
