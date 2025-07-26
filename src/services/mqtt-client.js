@@ -3,11 +3,19 @@ const logger = require('../utils/logger');
 
 class MQTTClient {
     constructor(config) {
-        this.config = config;
+        this.config = { ...config };
         this.client = null;
         this.isConnected = false;
         this.subscriptions = new Map();
         this.publishedDevices = new Set();
+
+        // Génère un suffixe numérique aléatoire pour rendre le clientId unique
+        const randomSuffix = Math.floor(Math.random() * 1000000);
+        if (this.config.MQTT_CLIENT_ID) {
+            this.config.MQTT_CLIENT_ID = `${this.config.MQTT_CLIENT_ID}-${randomSuffix}`;
+        } else {
+            this.config.MQTT_CLIENT_ID = `idiamant2mqtt-${randomSuffix}`;
+        }
     }
 
     async connect() {
@@ -18,9 +26,10 @@ class MQTTClient {
                 const options = {
                     clientId: this.config.MQTT_CLIENT_ID,
                     keepalive: this.config.MQTT_KEEPALIVE,
-                    clean: true,
+                    clean: false, // Changé à false pour garder les souscriptions
                     reconnectPeriod: 5000,
-                    connectTimeout: 30000
+                    connectTimeout: 30000,
+                    protocolVersion: 4 // Force MQTT 3.1.1
                 };
 
                 // Authentification si configurée
@@ -59,10 +68,20 @@ class MQTTClient {
                 this.client.on('close', () => {
                     this.isConnected = false;
                     logger.warn('⚠️ Connexion MQTT fermée');
+                    // Log détaillé pour diagnostiquer
+                    logger.debug('Détails fermeture MQTT - subscriptions actives:', Array.from(this.subscriptions.keys()));
                 });
 
                 this.client.on('reconnect', () => {
                     logger.info('🔄 Reconnexion MQTT...');
+                });
+
+                this.client.on('disconnect', (packet) => {
+                    logger.warn('⚠️ Déconnexion MQTT reçue:', packet);
+                });
+
+                this.client.on('offline', () => {
+                    logger.warn('⚠️ Client MQTT hors ligne');
                 });
 
                 this.client.on('message', (topic, message, packet) => {
@@ -85,8 +104,11 @@ class MQTTClient {
         const [, deviceId, last] = topic.split('/');
         if (last === 'cmd' && deviceId) {
             this.handleDeviceCommand(deviceId, topic, messageStr);
+        } else if (last === 'state' && deviceId) {
+            // Message d'état récupéré lors de la souscription (état persisté)
+            this.handleStateMessage(deviceId, messageStr, packet);
         } else {
-            logger.error('❌ Erreur traitement message MQTT:', error);
+            logger.debug(`Message MQTT ignoré sur ${topic}`);
         }
     }
 
@@ -97,8 +119,19 @@ class MQTTClient {
         }
     }
 
+    handleStateMessage(deviceId, state, packet) {
+        // Traitement des messages d'état récupérés (pour la persistance)
+        if (this.stateHandler && packet.retain) {
+            this.stateHandler(deviceId, state);
+        }
+    }
+
     setCommandHandler(handler) {
         this.commandHandler = handler;
+    }
+
+    setStateHandler(handler) {
+        this.stateHandler = handler;
     }
 
     async publish(topic, payload, options = {}) {
@@ -169,65 +202,102 @@ class MQTTClient {
         });
     }
 
-    // Publication de la configuration Home Assistant Discovery
-    async publishHomeAssistantDiscovery(device) {
+    async subscribeToPersistedStates(deviceIds) {
+        logger.info('📥 Récupération des états persistés depuis MQTT...');
+        const subscribePromises = [];
+        
+        for (const deviceId of deviceIds) {
+            const stateTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}/state`;
+            subscribePromises.push(this.subscribe(stateTopic));
+        }
+        
         try {
-            const deviceConfig = {
-                name: device.name,
-                unique_id: `idiamant_${device.id}`,
-                device_class: 'shutter',
-                command_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set`,
-                state_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/state`,
-                position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/position`,
-                set_position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set_position`,
-                payload_open: 'OPEN',
-                payload_close: 'CLOSE',
-                payload_stop: 'STOP',
-                state_open: 'open',
-                state_closed: 'closed',
-                position_open: 100,
-                position_closed: 0,
-                optimistic: false,
-                retain: true,
-                device: {
-                    identifiers: [`idiamant_${device.id}`],
-                    name: device.name,
-                    model: 'iDiamant Shutter',
-                    manufacturer: 'Bubendorff',
-                    via_device: this.config.HA_DEVICE_NAME
-                }
-            };
-
-            const discoveryTopic = `${this.config.HA_DISCOVERY_PREFIX}/cover/idiamant_${device.id}/config`;
-
-            await this.publish(discoveryTopic, JSON.stringify(deviceConfig), { retain: true });
-
-            this.publishedDevices.add(device.id);
-            logger.info(`🏠 Configuration Home Assistant publiée pour ${device.name}`);
-
+            await Promise.all(subscribePromises);
+            
+            // Attendre un délai plus long pour recevoir les messages retained
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    logger.info('📥 Récupération des états persistés terminée');
+                    // Ne plus se désabonner automatiquement - garder les souscriptions actives
+                    resolve();
+                }, 3000); // Augmenté à 3 secondes
+            });
         } catch (error) {
-            logger.error(`❌ Erreur publication HA Discovery pour ${device.name}:`, error);
+            logger.error('❌ Erreur lors de la souscription aux états persistés:', error);
             throw error;
         }
     }
 
-    // Publication du statut d'un volet
-    async publishShutterState(deviceId, state, position) {
-        try {
-            const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
-
-            await Promise.all([
-                this.publish(`${baseTopic}/state`, state, { retain: true }),
-                this.publish(`${baseTopic}/position`, position.toString(), { retain: true })
-            ]);
-
-            logger.debug(`📡 Statut volet ${deviceId} publié: ${state} (${position}%)`);
-
-        } catch (error) {
-            logger.error(`❌ Erreur publication statut volet ${deviceId}:`, error);
-            throw error;
+    async unsubscribeFromStates(deviceIds) {
+        for (const deviceId of deviceIds) {
+            const stateTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}/state`;
+            try {
+                await this.unsubscribe(stateTopic);
+            } catch (error) {
+                logger.warn(`⚠️ Erreur lors de la désouscription de ${stateTopic}:`, error);
+            }
         }
     }
+
+    // // Publication de la configuration Home Assistant Discovery
+    // async publishHomeAssistantDiscovery(device) {
+    //     try {
+    //         const deviceConfig = {
+    //             name: device.name,
+    //             unique_id: `idiamant_${device.id}`,
+    //             device_class: 'shutter',
+    //             command_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set`,
+    //             state_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/state`,
+    //             position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/position`,
+    //             set_position_topic: `${this.config.MQTT_TOPIC_PREFIX}/${device.id}/set_position`,
+    //             payload_open: 'OPEN',
+    //             payload_close: 'CLOSE',
+    //             payload_stop: 'STOP',
+    //             state_open: 'open',
+    //             state_closed: 'closed',
+    //             position_open: 100,
+    //             position_closed: 0,
+    //             optimistic: false,
+    //             retain: true,
+    //             device: {
+    //                 identifiers: [`idiamant_${device.id}`],
+    //                 name: device.name,
+    //                 model: 'iDiamant Shutter',
+    //                 manufacturer: 'Bubendorff',
+    //                 via_device: this.config.HA_DEVICE_NAME
+    //             }
+    //         };
+
+    //         const discoveryTopic = `${this.config.HA_DISCOVERY_PREFIX}/cover/idiamant_${device.id}/config`;
+
+    //         await this.publish(discoveryTopic, JSON.stringify(deviceConfig), { retain: true });
+
+    //         this.publishedDevices.add(device.id);
+    //         logger.info(`🏠 Configuration Home Assistant publiée pour ${device.name}`);
+
+    //     } catch (error) {
+    //         logger.error(`❌ Erreur publication HA Discovery pour ${device.name}:`, error);
+    //         throw error;
+    //     }
+    // }
+
+    // // Publication du statut d'un volet
+    // async publishShutterState(deviceId, state, position) {
+    //     try {
+    //         const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
+
+    //         await Promise.all([
+    //             this.publish(`${baseTopic}/state`, state, { retain: true }),
+    //             this.publish(`${baseTopic}/position`, position.toString(), { retain: true })
+    //         ]);
+
+    //         logger.debug(`📡 Statut volet ${deviceId} publié: ${state} (${position}%)`);
+
+    //     } catch (error) {
+    //         logger.error(`❌ Erreur publication statut volet ${deviceId}:`, error);
+    //         throw error;
+    //     }
+    // }
 
     async disconnect() {
         if (this.client && this.isConnected) {

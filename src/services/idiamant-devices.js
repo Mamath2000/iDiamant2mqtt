@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const axios = require('axios');
 const logger = require('../utils/logger');
 
@@ -7,9 +8,11 @@ class IDiamantDevicesHandler {
         this.homeId = null;
         this.bridgeId = null;
         this.devices = new Map();
+        this.persistedStates = new Map(); // États récupérés depuis MQTT
         this.apiBase = 'https://api.netatmo.com';
         this.mqttClient = mqttClient;
         this.config = config;
+        this.statusInterval = null;
     }
 
     async initialize() {
@@ -19,7 +22,7 @@ class IDiamantDevicesHandler {
                 'Authorization': `Bearer ${this.tokenData.access_token}`,
                 'Content-Type': 'application/json'
             }
-        }).then(response => {
+        }).then(async (response) => {
             const homes = response.data.body.homes;
             if (!homes || homes.length === 0) {
                 logger.error('Aucune maison Netatmo trouvée.');
@@ -42,6 +45,24 @@ class IDiamantDevicesHandler {
                 }
             });
             logger.info(`🔍 ${this.devices.size} volets Bubendorff découverts`);
+
+            // Récupération des états persistés depuis MQTT si disponible
+            if (this.mqttClient) {
+                await this.loadPersistedStates();
+            } else {
+                logger.warn('⚠️ Client MQTT non initialisé, les états persistés ne seront pas chargés');
+            }
+
+            // Démarre le timer de publication régulière du statut LWT/volets
+            if (this.statusInterval) {
+                clearInterval(this.statusInterval);
+            }
+            this.statusInterval = setInterval(() => {
+                if (this.mqttClient) {
+                    this.updateShutterStatus();
+                }
+            }, 20000); // 20 secondes
+
             return this.updateShutterStatus()
                 .then(() => {
                     logger.debug(`🔍 ${this.devices.size} l'état des volets Bubendorff découverts`);
@@ -56,6 +77,31 @@ class IDiamantDevicesHandler {
         });
     }
 
+    async loadPersistedStates() {
+        if (!this.mqttClient) return;
+
+        logger.info('🔄 Chargement des états persistés depuis MQTT...');
+
+        // Configuration du handler pour recevoir les états
+        this.mqttClient.setStateHandler((deviceId, state) => {
+            if (this.devices.has(deviceId)) {
+                this.persistedStates.set(deviceId, state);
+                logger.debug(`📥 État persisté récupéré pour ${deviceId}: ${state}`);
+            }
+        });
+
+        // Souscription aux topics d'état
+        const deviceIds = Array.from(this.devices.keys());
+        if (deviceIds.length > 0) {
+            try {
+                await this.mqttClient.subscribeToPersistedStates(deviceIds);
+                logger.info(`✅ ${this.persistedStates.size} états persistés récupérés`);
+            } catch (error) {
+                logger.warn('⚠️ Erreur lors de la récupération des états persistés:', error);
+            }
+        }
+    }
+
     getDevices() {
         return Array.from(this.devices.values());
     }
@@ -65,6 +111,12 @@ class IDiamantDevicesHandler {
     }
 
     async updateShutterStatus() {
+        const getHash = (stateObj) => {
+            const stateStr = JSON.stringify(stateObj);
+            const hash = crypto.createHash('sha1').update(stateStr).digest('hex');
+            return hash;
+        };
+
         if (!this.homeId) {
             logger.error('homeId non initialisé, impossible de récupérer le statut des volets.');
             return Promise.resolve(false);
@@ -78,29 +130,40 @@ class IDiamantDevicesHandler {
             const modules = response.data.body?.home?.modules || [];
             // Synchronisation de la liste des volets (NBS)
             const nbsModules = modules.filter(module => module.type === 'NBS');
+            let devicesUpdated = false;
 
             // Mise à jour des statuts
             nbsModules.forEach(module => {
                 const device = this.devices.get(module.id);
-                const state = (device.state || (module.current_position === 100) ? 'open' : 'closed');
+                const oldHash = getHash(device);
                 if (device) {
                     device.reachable = module.reachable;
                     device.last_seen = module.last_seen;
                     device.is_close = module.current_position === 0;
                     device.is_open = module.current_position === 100;
-                    device.state = state;
-                    this.devices.set(module.id, device);
+                    device.current_position = module.current_position;
+                    device.state = this.persistedStates.get(module.id);
+
+                    if (oldHash !== getHash(device)) {
+                        devicesUpdated = true;
+                        this.devices.set(module.id, device);
+                    }
                 }
             });
             // Mise à jour du statut du bridge
             const bridgeModule = modules.find(module => module.type === 'NBG' && module.id === this.bridgeId);
-            if (bridgeModule) {
+            if (bridgeModule && bridgeModule.reachable !== this.bridgeReachable) {
                 this.bridgeReachable = bridgeModule.reachable;
+                devicesUpdated = true;
             }
-            logger.info('✅ Statuts des volets synchronisés et mis à jour');
-            // Publication sur MQTT si le client est initialisé
-            if (this.mqttClient) {
-                this.publishShutterStatusToMqtt();
+
+            if (devicesUpdated) {
+                logger.info('✅ Statuts des volets synchronisés et mis à jour (diff détectée, publication MQTT)');
+                if (this.mqttClient) {
+                    this.publishShutterStatusToMqtt();
+                }
+            } else {
+                logger.debug('Aucun changement d\'état détecté, pas de publication MQTT');
             }
             return true;
         }).catch(err => {
@@ -125,6 +188,9 @@ class IDiamantDevicesHandler {
         };
 
         const tasks = [];
+        // Publication des états des volets
+
+        tasks.push(publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true }));
         this.devices.forEach(device => {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;
             const attributes = JSON.stringify({
@@ -137,20 +203,29 @@ class IDiamantDevicesHandler {
                 is_open: device.is_open
             });
             tasks.push(publishAsync(`${baseTopic}/lwt`, (device.reachable ? 'online' : 'offline'), { retain: true }));
-            tasks.push(publishAsync(`${baseTopic}/state`, device.state, { retain: true }));
+            // tasks.push(publishAsync(`${baseTopic}/state`, device.state, { retain: true }));
             tasks.push(publishAsync(`${baseTopic}/state_fr`, translate(device.state), { retain: true }));
-            tasks.push(publishAsync(`${baseTopic}/name`, translate(device.name), { retain: true }));
+            tasks.push(publishAsync(`${baseTopic}/name`, device.name.charAt(0).toUpperCase() + device.name.slice(1), { retain: true }));
             tasks.push(publishAsync(`${baseTopic}/attribute`, attributes, { retain: false }));
         });
         await Promise.all(tasks);
     }
 
-
-    // Ajoute ici d'autres méthodes pour manipuler les volets
+    updateDeviceState(deviceId, newState) {
+        const device = this.devices.get(deviceId);
+        if (device) {
+            device.state = newState;
+            this.devices.set(deviceId, device);
+            // Mettre à jour également l'état persisté
+            this.persistedStates.set(deviceId, newState);
+            logger.debug(`État du device ${deviceId} mis à jour: ${newState}`);
+        }
+    }
 
 }
 
-translate = (state) => {
+
+const translate = (state) => {
     switch (state) {
         case 'open':
             return 'Ouvert';
@@ -160,7 +235,7 @@ translate = (state) => {
             return 'Ouverture';
         case 'closing':
             return 'Fermeture';
-        case 'half':
+        case 'half_open':
             return 'Mi-ouvert';
         case 'stopped':
             return 'Arrêté';

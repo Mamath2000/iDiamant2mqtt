@@ -110,6 +110,9 @@ class ShutterController {
         this.mqttClient.publish(`${baseTopic}/state`, state, { retain: true });
         this.mqttClient.publish(`${baseTopic}/state_fr`, translate(state), { retain: true });
         logger.debug(`État publié pour ${deviceId}: ${state} (${translate(state)})`);
+        
+        this.devicesHandler.updateDeviceState(deviceId, state);
+        logger.debug(`État mis à jour pour ${deviceId}: ${state}`);
     }
 }
 
@@ -127,12 +130,12 @@ const translate = (state) =>  {
 
 
 const getTransition = (from_state, cmd) => {
-    if (from_state === 'close' || from_state === 'closing') {
+    if (from_state === 'closed' || from_state === 'closing') {
         switch (cmd) {
             case "open":
                 return { delay: 42000, from_state, transition_state: "opening", to_state: "open" };
             case "close":
-                return { delay: 0, from_state, transition_state: "closing", to_state: "close" };
+                return { delay: 0, from_state, transition_state: "closing", to_state: "closed" };
             case "half_open":
                 return { delay: 3000, from_state, transition_state: "opening", to_state: "half_open" };
             case "stop":
@@ -143,7 +146,7 @@ const getTransition = (from_state, cmd) => {
             case "open":
                 return { delay: 0, from_state, transition_state: "opening", to_state: "open" };
             case "close":
-                return { delay: 42000, from_state, transition_state: "closing", to_state: "close" };
+                return { delay: 42000, from_state, transition_state: "closing", to_state: "closed" };
             case "half_open":
                 return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open" };
             case "stop":
@@ -154,7 +157,7 @@ const getTransition = (from_state, cmd) => {
             case "open":
                 return { delay: 38000, from_state, transition_state: "opening", to_state: "open" };
             case "close":
-                return { delay: 5000, from_state, transition_state: "closing", to_state: "close" };
+                return { delay: 5000, from_state, transition_state: "closing", to_state: "closed" };
             case "half_open":
                 return { delay: 0, from_state, transition_state: "opening", to_state: "half_open" };
             case "stop":
@@ -165,7 +168,7 @@ const getTransition = (from_state, cmd) => {
             case "open":
                 return { delay: 42000, from_state, transition_state: "opening", to_state: "open" };
             case "close":
-                return { delay: 42000, from_state, transition_state: "closing", to_state: "close" };
+                return { delay: 42000, from_state, transition_state: "closing", to_state: "closed" };
             case "half_open":
                 return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open" };
             case "stop":

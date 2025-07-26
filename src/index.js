@@ -37,6 +37,7 @@ class App {
             devicesHandler.initialize().then(success => {
                 if (success) {
                     logger.info('✅ Appareils initialisés avec succès');
+
                     // Instanciation et démarrage du contrôleur de volets
                     const ShutterController = require('./controllers/shutter-controller');
                     const shutterController = new ShutterController(devicesHandler, this.mqttClient, config);
