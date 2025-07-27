@@ -28,7 +28,7 @@ class MQTTClient {
                     keepalive: this.config.MQTT_KEEPALIVE,
                     clean: false, // Changé à false pour garder les souscriptions
                     reconnectPeriod: 5000,
-                    connectTimeout: 30000,
+                    connectTimeout: 300000, // 5 minutes
                     protocolVersion: 4 // Force MQTT 3.1.1
                 };
 
