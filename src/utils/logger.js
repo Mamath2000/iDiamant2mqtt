@@ -1,3 +1,4 @@
+require('dotenv').config();
 const winston = require('winston');
 
 // Configuration des formats de log
@@ -18,9 +19,18 @@ const logFormat = winston.format.combine(
   })
 );
 
+// Détermine le niveau de log basé sur l'environnement
+const getLogLevel = () => {
+  const env = process.env.MODE_ENV || 'development';
+  const logLevel = process.env.LOG_LEVEL;
+  
+  if (logLevel) return logLevel;
+  return env === 'production' ? 'warn' : 'info';
+};
+
 // Configuration du logger
 const logger = winston.createLogger({
-  level: (process.env.LOG_LEVEL || 'info'),
+  level: getLogLevel(),
   format: logFormat,
   transports: [
     // Console
@@ -65,5 +75,10 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'logs/rejections.log' })
   ]
 });
+
+// En développement, on veut voir tous les logs
+if ((process.env.NODE_ENV || 'development') === 'development') {
+  logger.level = process.env.LOG_LEVEL || 'debug'; // Respecte LOG_LEVEL même en dev
+}
 
 module.exports = logger;

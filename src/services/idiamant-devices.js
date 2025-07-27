@@ -20,6 +20,7 @@ class IDiamantDevicesHandler {
         this.HADiscoveryHelper = new haDiscoveryHelper(this.mqttClient, this.config);
         this.authHelper = new NetatmoAuthHelper();
         this.authHelper.setTokenRefreshHandler(this.tokenRefreshHandler.bind(this));
+        this.syncInterval = parseInt(config.SYNC_INTERVAL) || 30000;  // 30 secondes par défaut
     }
 
     async initialize() {
@@ -65,10 +66,8 @@ class IDiamantDevicesHandler {
                 clearInterval(this.statusInterval);
             }
             this.statusInterval = setInterval(() => {
-                if (this.mqttClient) {
-                    this.updateShutterStatus();
-                }
-            }, 20000); // 20 secondes
+                this.updateShutterStatus();
+            }, this.syncInterval); // Utilisation ici au lieu de 20000
 
             // Publication des composants Home Assistant
             if (this.haDiscoveryInterval) {

@@ -25,11 +25,16 @@ class MQTTClient {
 
                 const options = {
                     clientId: this.config.MQTT_CLIENT_ID,
-                    keepalive: this.config.MQTT_KEEPALIVE,
-                    clean: false, // Changé à false pour garder les souscriptions
+                    clean: true,
+                    connectTimeout: 30000,
+                    keepalive: parseInt(this.config.MQTT_KEEPALIVE) || 60,  // Ajout ici
                     reconnectPeriod: 5000,
-                    connectTimeout: 300000, // 5 minutes
-                    protocolVersion: 4 // Force MQTT 3.1.1
+                    will: {
+                        topic: `${this.config.MQTT_TOPIC_PREFIX}/lwt`,
+                        payload: 'offline',
+                        qos: 0,
+                        retain: true
+                    }
                 };
 
                 // Authentification si configurée
@@ -37,14 +42,6 @@ class MQTTClient {
                     options.username = this.config.MQTT_USERNAME;
                     options.password = this.config.MQTT_PASSWORD;
                 }
-
-                // Will message pour signaler la déconnexion
-                options.will = {
-                    topic: `${this.config.MQTT_TOPIC_PREFIX}/lwt`,
-                    payload: 'offline',
-                    qos: 1,
-                    retain: true
-                };
 
                 this.client = mqtt.connect(this.config.MQTT_BROKER_URL, options);
 
@@ -244,7 +241,7 @@ class MQTTClient {
             logger.info('🔌 Déconnexion du client MQTT');
 
             // Publication du statut hors ligne
-            await this.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/state`, 'offline', { retain: true });
+            await this.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, 'offline', { retain: true });
 
             // Désouscription de tous les topics souscrits
             for (const topic of this.subscriptions.keys()) {

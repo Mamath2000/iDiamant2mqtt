@@ -6,7 +6,7 @@ services:
     container_name: idiamant2mqtt
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
+      - MODE_ENV=production
     env_file:
       - .env
     ports:

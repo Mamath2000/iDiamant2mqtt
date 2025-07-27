@@ -18,10 +18,10 @@ class haDiscoveryHelper {
         const identifier = `idiamant_${bridgeId.replace(/:/g, '')}`;
         const device = {
             identifiers: [identifier],
-            name: 'Idiamant Gateway',
+            name: this.config.HA_DEVICE_NAME || 'iDiamant Gateway',  // Utilisation ici
             manufacturer: 'Netatmo',
             connections: [
-                ['mac', bridgeId],  // Remplacer par l'adresse MAC de votre appareil
+                ['mac', bridgeId],
                 ['ip', this.config.IDIAMANT_IP]
             ]
         }

@@ -1,4 +1,3 @@
-
 # Makefile pour iDiamant2MQTT
 
 # Variables
@@ -69,9 +68,7 @@ dev:
 # Mode production
 start:
 	@echo "$(GREEN)Lancement en mode production...$(NC)"
-# Run & Debug
-# ========================
-	npm start
+	MODE_ENV=production npm start
 
 # Nettoyage
 clean:
@@ -111,8 +108,6 @@ check-env:
 	@npm --version || (echo "$(RED)npm n'est pas installé$(NC)" && exit 1)
 	@echo "$(GREEN)Environnement OK !$(NC)"
 
-# Par défaut, afficher l'aide
-.DEFAULT_GOAL := help
 # Service
 # ========================
 
@@ -149,3 +144,8 @@ service-stop:
 service-logs:
 	@echo "Affichage des logs du service systemd idiamant2mqtt..."
 	sudo journalctl -u idiamant2mqtt.service -f
+
+
+
+# Par défaut, afficher l'aide
+.DEFAULT_GOAL := help

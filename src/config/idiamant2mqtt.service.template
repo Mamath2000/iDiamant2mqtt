@@ -8,7 +8,7 @@ User=__USER__
 WorkingDirectory=__WORKDIR__
 ExecStart=/usr/bin/node __WORKDIR__/src/index.js
 Restart=on-failure
-Environment=NODE_ENV=production
+Environment=MODE_ENV=production
 EnvironmentFile=__WORKDIR__/.env
 
 [Install]

@@ -20,24 +20,20 @@ const config = {
   HA_DISCOVERY_PREFIX: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
   HA_DEVICE_NAME: process.env.HA_DEVICE_NAME || 'iDiamant Bridge',
   
-  // Configuration de l'application
-  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-  SYNC_INTERVAL: parseInt(process.env.SYNC_INTERVAL) || 30000, // 30 secondes
-  RETRY_INTERVAL: parseInt(process.env.RETRY_INTERVAL) || 5000, // 5 secondes
-  MAX_RETRIES: parseInt(process.env.MAX_RETRIES) || 3,
-  
   // Configuration réseau
-  HTTP_TIMEOUT: parseInt(process.env.HTTP_TIMEOUT) || 10000, // 10 secondes
   MQTT_KEEPALIVE: parseInt(process.env.MQTT_KEEPALIVE) || 60, // 60 secondes
   
   // Environnement
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT) || 3000
+  MODE_ENV: process.env.MODE_ENV || 'development',
+
+  // Configuration de l'application
+  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  SYNC_INTERVAL: parseInt(process.env.SYNC_INTERVAL) || 30000, // 30 secondes
 };
 
 // Validation des configurations critiques
 const logger = require('../utils/logger');
-if (config.NODE_ENV === 'production') {
+if (config.MODE_ENV === 'production') {
   // En production, on s'assure que les champs critiques sont définis
   const requiredFields = [
     'IDIAMANT_CLIENT_ID',
@@ -48,8 +44,6 @@ if (config.NODE_ENV === 'production') {
     logger.error(`Configuration manquante en production: ${missingFields.join(', ')}`);
     process.exit(1);
   }
-  // En production, on veut un niveau de log warn
-  config.LOG_LEVEL = 'warn';
   logger.info('✅ Configuration validée pour la production');
 }
 
