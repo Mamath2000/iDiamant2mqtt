@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 const crypto = require('crypto');
 const config = require('../config/config');
 const NetatmoAuthHelper = require('./auth-helper');
@@ -56,7 +55,7 @@ class NetatmoAuthUrlGenerator {
     logger.info('Après autorisation, le serveur webhook démarre automatiquement et le token sera sauvegardé.');
 
     // Sauvegarde de l'état pour vérification
-    const statePath = path.join(process.cwd(), 'temp', '.auth-state');
+    const statePath = path.join(process.cwd(), '.auth-state');
 
     require('fs').writeFileSync(
       statePath,

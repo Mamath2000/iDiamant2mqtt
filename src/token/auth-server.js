@@ -7,7 +7,6 @@ const mqtt = require('mqtt');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
-const NetatmoAuthHelper = require('./auth-helper');
 const logger = require('../utils/logger');
 
 /**
@@ -26,7 +25,7 @@ class NetatmoAuthServer {
 
   loadAuthState() {
     try {
-      const statePath = path.join(process.cwd(), 'temp', '.auth-state');
+      const statePath = path.join(process.cwd(), '.auth-state');
 
       if (fs.existsSync(statePath)) {
         const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -37,10 +36,71 @@ class NetatmoAuthServer {
     }
   }
 
+    // Suppression du fichier .auth-state après la première authentification
+  removeAuthStateFile() {
+      const authStatePath = path.join(process.cwd(), 'temp', '.auth-state');
+      if (fs.existsSync(authStatePath)) {
+          try {
+              fs.unlinkSync(authStatePath);
+              logger.info('🗑️ Fichier .auth-state supprimé après authentification.');
+          } catch (err) {
+              logger.warn('⚠️ Impossible de supprimer .auth-state:', err);
+          }
+      }
+  }
+
+      // --- Assistant CLI (conserve la logique existante) ---
+  checkConfiguration() {
+        const logLevel = (config.LOG_LEVEL || 'info').toLowerCase();
+        let checks = [
+            {
+                name: 'IDIAMANT_CLIENT_ID',
+                value: config.IDIAMANT_CLIENT_ID,
+                valid: config.IDIAMANT_CLIENT_ID && config.IDIAMANT_CLIENT_ID !== 'your_client_id_here'
+            },
+            {
+                name: 'IDIAMANT_CLIENT_SECRET',
+                value: config.IDIAMANT_CLIENT_SECRET,
+                valid: config.IDIAMANT_CLIENT_SECRET && config.IDIAMANT_CLIENT_SECRET !== 'your_client_secret_here'
+            },
+            {
+                name: 'MQTT_BROKER_URL',
+                value: config.MQTT_BROKER_URL,
+                valid: config.MQTT_BROKER_URL && config.MQTT_BROKER_URL !== ''
+            },
+            {
+                name: 'NETATMO_REDIRECT_URI',
+                value: config.NETATMO_REDIRECT_URI,
+                valid: config.NETATMO_REDIRECT_URI && config.NETATMO_REDIRECT_URI !== ''
+            }
+        ];
+        let allValid = true;
+        checks.forEach(check => {
+            const status = check.valid ? '✅' : '❌';
+            const value = check.valid ?
+                (check.value.length > 30 ? check.value.substring(0, 30) + '...' : check.value) :
+                'NON CONFIGURÉ';
+            if (logLevel === 'debug') {
+                logger.debug(`${status} ${check.name}: ${value}`);
+            }
+            if (!check.valid) {
+                allValid = false;
+            }
+        });
+        if (allValid) {
+            if (logLevel === 'debug') logger.debug('');
+            logger.info('✅ Configuration valide pour l\'authentification');
+        } else {
+            logger.error('❌ Configuration incomplète. Éditez le fichier .env');
+            return false;
+        }
+        return true;
+    }
+
   async connectMQTT() {
     try {
       logger.info('Connexion au broker MQTT...');
-      
+
       const options = {
         clientId: 'idiamant_auth_server',
         clean: true
@@ -52,7 +112,7 @@ class NetatmoAuthServer {
       }
 
       this.mqttClient = mqtt.connect(config.MQTT_BROKER_URL, options);
-      
+
       return new Promise((resolve, reject) => {
         this.mqttClient.on('connect', () => {
           logger.info('Connecté au broker MQTT');
@@ -70,31 +130,10 @@ class NetatmoAuthServer {
     }
   }
 
-
-  async saveTokens(tokens) {
-    try {
-      const tokenData = {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_in: tokens.expires_in,
-        timestamp: Date.now()
-      };
-
-      const tokenPath = path.join(process.cwd(), 'temp', '.netatmo-tokens.json');
-
-      fs.writeFileSync(tokenPath, JSON.stringify(tokenData, null, 2));
-      logger.info('Token sauvegardé localement');
-    } catch (error) {
-      logger.error('Erreur sauvegarde tokens:', error);
-    }
-
-    NetatmoAuthHelper.removeAuthStateFile();
-  }
-
   async exchangeCodeForTokens(code) {
     try {
       logger.info('Échange du code d\'autorisation...');
-      
+
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
         client_id: config.IDIAMANT_CLIENT_ID,
@@ -116,26 +155,39 @@ class NetatmoAuthServer {
 
       if (response.status === 200) {
         logger.info('Token Netatmo obtenu avec succès');
-        
-        // Sauvegarde locale uniquement
-        await this.saveTokens(response.data);
-        // // Publication Home Assistant Discovery (état + validité)
-        // const HaDiscoveryPublisher = require('./ha-discovery');
-        // const haPublisher = new HaDiscoveryPublisher(this.mqttClient);
-        // haPublisher.publishAuthStatus(response.data);
+
+        this.removeAuthStateFile();
+
+        // Publie le token sur MQTT au bon topic
+        const MQTTClient = require('../services/mqtt-client');
+        const mqttClient = new MQTTClient(config);
+        await mqttClient.connect();
+        const topic = `${config.MQTT_TOPIC_PREFIX}/bridge/token`;
+        try {
+          await mqttClient.publish(
+            topic,
+            JSON.stringify(response.data),
+            { retain: true }
+          );
+          logger.info(`✅ Token Netatmo publié sur le topic MQTT : ${topic}`);
+        } catch (err) {
+          logger.error('Erreur lors de la publication MQTT:', err);
+          throw err;
+        }
+        await mqttClient.disconnect();
         return response.data;
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
-      logger.error('Erreur échange token:', error.response?.data || error.message);
+      logger.error('Erreur échange token:', error);
       throw error;
     }
   }
 
   handleCallback(req, res) {
     const parsedUrl = url.parse(req.url, true);
-    
+
     if (parsedUrl.pathname !== '/netatmo/callback') {
       res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end('<h1>404 - Page non trouvée</h1>');
@@ -197,7 +249,7 @@ class NetatmoAuthServer {
             </body>
           </html>
         `);
-        
+
         // Arrêt automatique du serveur après succès
         setTimeout(() => {
           logger.info('Authentification terminée. Arrêt du serveur.');
@@ -220,9 +272,8 @@ class NetatmoAuthServer {
 
   async start() {
     try {
-      // Validation centralisée via NetatmoAuthHelper
-      const helper = new NetatmoAuthHelper();
-      if (!helper.checkConfiguration(true)) {
+      // Validation
+      if (!this.checkConfiguration()) {
         logger.error('Configuration incomplète. Vérifiez votre fichier .env.');
         process.exit(1);
       }
