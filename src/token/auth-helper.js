@@ -31,7 +31,7 @@ class NetatmoAuthHelper {
                             this.tokenData = token;
                             logger.info('✅ Token Netatmo récupéré via MQTT (retain)');
                             // Supprimer le handler temporaire
-                            // this.mqttClient.setTokenHandler(null);
+                            this.mqttClient.setTokenHandler(null);
                             if (!this.isTokenValid(token)) {
                                 logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
                                 resolve(null);
@@ -40,7 +40,7 @@ class NetatmoAuthHelper {
                             }
                         } catch (err) {
                             logger.warn('⚠️ Impossible de parser le token depuis MQTT.');
-                            // this.mqttClient.setTokenHandler(null);
+                            this.mqttClient.setTokenHandler(null);
                             resolve(null);
                         }
                     }
@@ -52,11 +52,11 @@ class NetatmoAuthHelper {
                 // S'abonner au topic pour recevoir le message retain
                 await this.mqttClient.subscribe(topic);
                 
-                // // Timeout de sécurité (5 secondes)
-                // setTimeout(() => {
-                //     this.mqttClient.setTokenHandler(null);
-                //     resolve(null);
-                // }, 5000);
+                // Timeout de sécurité (5 secondes)
+                setTimeout(() => {
+                    this.mqttClient.setTokenHandler(null);
+                    resolve(null);
+                }, 5000);
                 
             } catch (err) {
                 logger.error('❌ Erreur lors de la récupération du token:', err);
@@ -117,6 +117,7 @@ class NetatmoAuthHelper {
             // Publie le token sur MQTT
             this.tokenData = newToken; // Met à jour le tokenData
             await this.mqttClient.publish(`${this.bridgeTopic}/token`, JSON.stringify(this.tokenData), { retain: true });
+            this.isTokenValid(newToken);
             // await this.mqttClient.publish(`${this.bridgeTopic}/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
             // await this.mqttClient.publish(`${this.bridgeTopic}/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
             logger.info('✅ Token Netatmo rafraîchi et publié sur MQTT.');
