@@ -158,6 +158,9 @@ class NetatmoAuthServer {
 
         this.removeAuthStateFile();
 
+        const tokenData = response.data;
+        tokenData.timestamp = Date.now();
+
         // Publie le token sur MQTT au bon topic
         const MQTTClient = require('../services/mqtt-client');
         const mqttClient = new MQTTClient(config);
@@ -166,7 +169,7 @@ class NetatmoAuthServer {
         try {
           await mqttClient.publish(
             topic,
-            JSON.stringify(response.data),
+            JSON.stringify(tokenData),
             { retain: true }
           );
           logger.info(`✅ Token Netatmo publié sur le topic MQTT : ${topic}`);
@@ -175,7 +178,7 @@ class NetatmoAuthServer {
           throw err;
         }
         await mqttClient.disconnect();
-        return response.data;
+        return tokenData;
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -245,7 +248,7 @@ class NetatmoAuthServer {
                 </ul>
               </div>
               <p>🚀 Vous pouvez maintenant fermer cette fenêtre et arrêter le serveur d'authentification.</p>
-              <p>📡 Les tokens ont été automatiquement publiés sur MQTT et sauvegardés localement.</p>
+              <p>📡 Les tokens ont été automatiquement publiés sur MQTT.</p>
             </body>
           </html>
         `);

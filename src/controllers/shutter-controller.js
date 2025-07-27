@@ -10,7 +10,9 @@ const CMD_MAP = {
 };
 
 class ShutterController {
-    constructor(devicesHandler, mqttClient, config) {
+    constructor(config, mqttClient, api, authHelper, devicesHandler) {
+        this.api = api;
+        this.authHelper = authHelper;
         this.devicesHandler = devicesHandler;
         this.mqttClient = mqttClient;
         this.config = config;
@@ -20,11 +22,11 @@ class ShutterController {
         logger.info('🔍 Vérification des appareils Netatmo...');
         this.devicesHandler.getDevices().forEach(device => {
             const deviceState = this.devicesHandler.persistedStates.get(device.id);
-            if (! deviceState || deviceState.state == '' || deviceState.position == '') {
+            if (!deviceState || deviceState.state == '' || parseInt(deviceState.position) < 0 || isNaN(parseInt(deviceState.position))) {
                 logger.warn(`⚠️ Appareil ${device.name} (ID: ${device.id}) n'a pas d'état ou de position définie. On va fermer le volet.`);
                 this.handleCommand(device.id, 'close');
             } else {
-                logger.info(`✅ Appareil ${device.name} (ID: ${device.id}) est prêt avec l'état ${device.state} et la position ${device.position}`);
+                logger.info(`✅ Appareil ${device.name} (ID: ${device.id}) est prêt avec l'état "${deviceState.state}" et la position ${deviceState.position}`);
             }
         });
     }
@@ -45,7 +47,7 @@ class ShutterController {
             if (deviceId === 'bridge') {
                 logger.info(`Commande reçue pour le bridge : ${message}.`);
                 if (message === 'refreshToken') {
-                    await this.devicesHandler.startTokenAutoRefresh(true);
+                    await this.authHelper.startTokenAutoRefresh(true);
                 }
                 return;
             } else if (parseInt(deviceId) > 0 && Object.prototype.hasOwnProperty.call(CMD_MAP, message)) {
@@ -125,12 +127,7 @@ class ShutterController {
         };
         try {
             logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
-            await axios.post(`${this.devicesHandler.apiBase}/api/setstate`, payload, {
-                headers: {
-                    'Authorization': `Bearer ${this.devicesHandler.tokenData.access_token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
+            await this.api.post("/setstate", payload);
             logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
         } catch (err) {
             logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);

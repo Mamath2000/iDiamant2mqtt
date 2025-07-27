@@ -1,47 +1,41 @@
 const crypto = require('crypto');
-const axios = require('axios');
 const logger = require('../utils/logger');
 const NetatmoAuthHelper = require('../token/auth-helper');
 const haDiscoveryHelper = require('./ha-discovery-helper');
 const { translate, formatDate } = require('../utils/utils');
 
 class IDiamantDevicesHandler {
-    constructor(config, tokenData, mqttClient = null) {
-        this.tokenData = tokenData;
+    constructor(config, mqttClient, api) {
+        this.api = api;
         this.homeId = null;
         this.bridgeId = null;
         this.devices = new Map();
         this.persistedStates = new Map(); // États récupérés depuis MQTT
-        this.apiBase = 'https://api.netatmo.com';
+        // this.apiBase = 'https://api.netatmo.com';
         this.mqttClient = mqttClient;
         this.config = config;
         this.statusInterval = null;
         this.haDiscoveryInterval = null;
         this.HADiscoveryHelper = new haDiscoveryHelper(this.mqttClient, this.config);
         this.authHelper = new NetatmoAuthHelper();
-        this.authHelper.setTokenRefreshHandler(this.tokenRefreshHandler.bind(this));
+        // this.authHelper.setTokenRefreshHandler(this.tokenRefreshHandler.bind(this));
         this.syncInterval = parseInt(config.SYNC_INTERVAL) || 30000;  // 30 secondes par défaut
     }
 
     async initialize() {
-        logger.debug(`🔍 Token utilisé: ${this.tokenData.access_token.substring(0, 20)}...`);
-        logger.debug(`🔍 URL appelée: ${this.apiBase}/api/homesdata`);
-        
-        return axios.get(`${this.apiBase}/api/homesdata`, {
-            headers: {
-                'Authorization': `Bearer ${this.tokenData.access_token}`,
-                'Content-Type': 'application/json'
-            }
-        }).then(async (response) => {
+        logger.info('🔄 Initialisation des appareils iDiamant...');
+        return this.api.get("/homesdata")
+        .then(async (response) => {
             const homes = response.data.body.homes;
             if (!homes || homes.length === 0) {
                 logger.error('Aucune maison Netatmo trouvée.');
                 return false;
             }
             this.homeId = homes[0].id;
-            this.bridgeId = homes[0].modules && homes[0].modules.length > 0 ? homes[0].modules[0].id : null;
             logger.debug(`🏠 home_id: ${this.homeId}`);
+            this.bridgeId = homes[0].modules && homes[0].modules.length > 0 ? homes[0].modules[0].id : null;
             logger.debug(`🔗 bridge_id: ${this.bridgeId}`);
+            
             // Découverte des volets (modules de type "Bubendorff")
             this.devices.clear();
             homes[0].modules.forEach(module => {
@@ -178,12 +172,8 @@ class IDiamantDevicesHandler {
             logger.error('homeId non initialisé, impossible de récupérer le statut des volets.');
             return Promise.resolve(false);
         }
-        return axios.get(`${this.apiBase}/api/homestatus?home_id=${this.homeId}`, {
-            headers: {
-                'Authorization': `Bearer ${this.tokenData.access_token}`,
-                'Content-Type': 'application/json'
-            }
-        }).then(response => {
+        return this.api.get(`/homestatus?home_id=${this.homeId}`)
+        .then(response => {
             const modules = response.data.body?.home?.modules || [];
             // Synchronisation de la liste des volets (NBS)
             const nbsModules = modules.filter(module => module.type === 'NBS');
@@ -232,21 +222,22 @@ class IDiamantDevicesHandler {
             return false;
         });
     }
-    startTokenAutoRefresh(force = false) {
-        if (this.tokenData && this.tokenData.refresh_token && this.tokenData.expires_in && this.tokenData.timestamp) {
-            this.authHelper.startTokenAutoRefresh(this.tokenData, force);
-            logger.info('🔄 Redémarrage du rafraîchissement automatique du token Netatmo...');
-        }
-    }
 
-    tokenRefreshHandler(newTokenData) {
-        this.tokenData = newTokenData;
-        logger.info('🔄 Token Netatmo mis à jour dans devicesHandler via callback.');
-        if (this.mqttClient) {
-            this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-            this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-        }
-    }
+    // startTokenAutoRefresh(force = false) {
+    //     if (this.tokenData && this.tokenData.refresh_token && this.tokenData.expires_in && this.tokenData.timestamp) {
+    //         this.authHelper.startTokenAutoRefresh(this.tokenData, force);
+    //         logger.info('🔄 Redémarrage du rafraîchissement automatique du token Netatmo...');
+    //     }
+    // }
+
+    // tokenRefreshHandler(newTokenData) {
+    //     this.tokenData = newTokenData;
+    //     logger.info('🔄 Token Netatmo mis à jour dans devicesHandler via callback.');
+    //     if (this.mqttClient) {
+    //         this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+    //         this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+    //     }
+    // }
 
     publishShutterStatusToMqtt() {
         const publishAsync = (topic, message, options) => {
@@ -261,8 +252,8 @@ class IDiamantDevicesHandler {
 
         // Publication des états des volets (send and forget)
         publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true });
-        this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-        this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+        // this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+        // this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
 
         this.devices.forEach(device => {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;

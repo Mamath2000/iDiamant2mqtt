@@ -99,11 +99,15 @@ class MQTTClient {
 
         // Traitement des messages de commande pour /set et /cmd
         const [, deviceId, last] = topic.split('/');
+
         if (last === 'cmd' && deviceId) {
             this.handleDeviceCommand(deviceId, topic, messageStr);
         } else if (last === 'state' && deviceId) {
             // Message d'état récupéré lors de la souscription (état persisté)
             this.handleStateMessage(deviceId, messageStr, packet);
+        } else if (last === 'token' && deviceId) {
+            // Message de token récupéré lors de la souscription (état persisté)
+            this.handleTokenMessage(deviceId, messageStr, packet);  
         } else {
             logger.debug(`Message MQTT ignoré sur ${topic}`);
         }
@@ -123,12 +127,24 @@ class MQTTClient {
         }
     }
 
+    handleTokenMessage(deviceId, state, packet) {
+        // Traitement des messages d'état récupérés (pour la persistance)
+        if (this.tokenHandler && packet.retain) {
+            this.tokenHandler(deviceId, state);
+        }
+    }
+
     setCommandHandler(handler) {
         this.commandHandler = handler;
     }
 
     setStateHandler(handler) {
         this.stateHandler = handler;
+    }
+
+
+    setTokenHandler(handler) {
+        this.tokenHandler = handler;
     }
 
     async publish(topic, payload, options = {}) {
@@ -202,15 +218,15 @@ class MQTTClient {
     async subscribeToPersistedStates(deviceIds) {
         logger.info('📥 Récupération des états persistés depuis MQTT...');
         const subscribePromises = [];
-        
+
         for (const deviceId of deviceIds) {
             const stateTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}/state`;
             subscribePromises.push(this.subscribe(stateTopic));
         }
-        
+
         try {
             await Promise.all(subscribePromises);
-            
+
             // Attendre un délai plus long pour recevoir les messages retained
             return new Promise(resolve => {
                 setTimeout(() => {

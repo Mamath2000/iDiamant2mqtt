@@ -9,6 +9,7 @@ class App {
         this.mqttClient = null;
         this.shutterController = null;
         this.isRunning = false;
+        this.apiBase = 'https://api.netatmo.com';
     }
 
     async start() {
@@ -23,18 +24,28 @@ class App {
             logger.info('✅ Client MQTT connecté');
 
             // Gestion du token via auth-helper
-            const authHelper = new NetatmoAuthHelper();
-            const tokenData = authHelper.getTokenData();
+            const authHelper = new NetatmoAuthHelper(this.mqttClient);
+            const tokenData = await authHelper.getTokenData();
 
-            if (!authHelper.isTokenValid(tokenData)) {
-                logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
-                process.exit(1);
-            }
-            
-            const devicesHandler = new IDiamantDevicesHandler(config, tokenData, this.mqttClient);
+            // if (!authHelper.isTokenValid(tokenData)) {
+            //     logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
+            //     process.exit(1);
+            // }
             logger.info('✅ Token Netatmo valide. OK');
-            devicesHandler.startTokenAutoRefresh();
+            authHelper.startTokenAutoRefresh();
+            
+            const axios= require('axios');
+            const api = axios.create({
+                baseURL: `${config.IDIAMANT_API_URL}/api`,
+                headers: {
+                    'Authorization': `Bearer ${tokenData.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            logger.debug(`🔍 Token utilisé: ${tokenData.access_token.substring(0, 20)}...`);
+            logger.debug(`🔍 API Initialisée: ${this.apiBase}`);
 
+            const devicesHandler = new IDiamantDevicesHandler(config, this.mqttClient,api);
             logger.info('✅ Initialisation des appareils Netatmo...');
             devicesHandler.initialize().then(success => {
                 if (success) {
@@ -42,7 +53,7 @@ class App {
 
                     // Instanciation et démarrage du contrôleur de volets
                     const ShutterController = require('./controllers/shutter-controller');
-                    const shutterController = new ShutterController(devicesHandler, this.mqttClient, config);
+                    const shutterController = new ShutterController(config, this.mqttClient, api, authHelper, devicesHandler);
 
                     shutterController.checkDevices();
                     shutterController.listenCommands();

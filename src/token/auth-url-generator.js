@@ -4,6 +4,7 @@ const config = require('../config/config');
 const NetatmoAuthHelper = require('./auth-helper');
 const logger = require('../utils/logger');
 const path = require('path');
+const NetatmoAuthServer = require('./auth-server');
 
 /**
  * Générateur d'URL d'autorisation OAuth2 pour Netatmo
@@ -16,6 +17,7 @@ class NetatmoAuthUrlGenerator {
     this.scope = 'read_bubendorff write_bubendorff';
     this.state = this.generateState();
     this.authHelper = new NetatmoAuthHelper();
+   
   }
 
 
@@ -43,10 +45,10 @@ class NetatmoAuthUrlGenerator {
   }
 
   async displayInstructions() {
-    if (!this.authHelper.checkConfiguration(true)) {
-      logger.error('❌ Configuration incomplète. Vérifiez votre fichier .env.');
-      process.exit(1);
-    }
+    // if (!this.server.checkConfiguration(true)) {
+    //   logger.error('❌ Configuration incomplète. Vérifiez votre fichier .env.');
+    //   process.exit(1);
+    // }
 
     const auth = this.generateAuthUrl();
 
@@ -64,7 +66,6 @@ class NetatmoAuthUrlGenerator {
 
     logger.info('Démarrage du serveur webhook...');
     try {
-      const NetatmoAuthServer = require('./auth-server');
       const server = new NetatmoAuthServer();
       await server.start();
     } catch (err) {
