@@ -48,7 +48,8 @@ class App {
                     logger.error('❌ Échec de l\'initialisation des appareils');
                 }
             });
-
+            
+            this.isRunning = true; 
             // Gestion propre de l'arrêt
             this.setupGracefulShutdown();
         } catch (error) {
@@ -84,7 +85,9 @@ class App {
                     if (this.shutterController) {
                         await this.shutterController.stop();
                     }
-
+                    if (this.devicesHandler) {
+                        this.devicesHandler.stop(); // Ajoute cet appel
+                    }
                     if (this.mqttClient) {
                         await this.mqttClient.disconnect();
                     }

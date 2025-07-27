@@ -246,6 +246,15 @@ class MQTTClient {
             // Publication du statut hors ligne
             await this.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/state`, 'offline', { retain: true });
 
+            // Désouscription de tous les topics souscrits
+            for (const topic of this.subscriptions.keys()) {
+                try {
+                    await this.unsubscribe(topic);
+                } catch (error) {
+                    logger.warn(`⚠️ Erreur lors de la désouscription de ${topic}:`, error);
+                }
+            }
+
             return new Promise((resolve) => {
                 this.client.end(false, {}, () => {
                     this.isConnected = false;
