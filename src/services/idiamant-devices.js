@@ -24,7 +24,9 @@ class IDiamantDevicesHandler {
     }
 
     async initialize() {
-        // Récupération des home_id et bridge_id
+        logger.debug(`🔍 Token utilisé: ${this.tokenData.access_token.substring(0, 20)}...`);
+        logger.debug(`🔍 URL appelée: ${this.apiBase}/api/homesdata`);
+        
         return axios.get(`${this.apiBase}/api/homesdata`, {
             headers: {
                 'Authorization': `Bearer ${this.tokenData.access_token}`,
@@ -91,6 +93,13 @@ class IDiamantDevicesHandler {
                     return false;
                 });
         }).catch(err => {
+            logger.error('❌ Détails de l\'erreur API:', {
+                status: err.response?.status,
+                statusText: err.response?.statusText,
+                data: err.response?.data,
+                url: err.config?.url,
+                headers: err.config?.headers
+            });
             logger.error('❌ Erreur lors de l\'initialisation des devices Netatmo:', err);
             return false;
         });
