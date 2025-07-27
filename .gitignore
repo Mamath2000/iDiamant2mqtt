@@ -52,3 +52,4 @@ data/
 
 # Docker
 .dockerignore
+.auth-state
