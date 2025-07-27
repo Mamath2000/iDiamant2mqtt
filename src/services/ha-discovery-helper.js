@@ -95,7 +95,6 @@ class haDiscoveryHelper {
         };
 
         this.mqttClient.publish(gatewayTopic, JSON.stringify(gatewayPayload), { retain: true });
-        console.log(`Composant Gateway publié sur le topic ${gatewayTopic}`);
     }
 
     publishShutterComponents(device, bridgeId) {
@@ -282,7 +281,6 @@ class haDiscoveryHelper {
         };
 
         this.mqttClient.publish(gatewayTopic, JSON.stringify(gatewayPayload), { retain: true });
-        console.log(`Composant Volet publié sur le topic ${gatewayTopic}`);
     }
 
 }

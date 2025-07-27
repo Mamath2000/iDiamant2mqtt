@@ -65,15 +65,15 @@ const getTransition = (from_state, from_position, cmd) => {
     delayMs = _getTransitionDelay(from_position, from_state, cmd);
     switch (cmd) {
         case "open":
-            return { delay: delayMs, from_state, transition_state: "opening", to_state: "open" };
+            return { delay: delayMs, from_state, transition_state: "opening", to_state: "open", target_position: 100 };
         case "close":
-            return { delay: delayMs, from_state, transition_state: "closing", to_state: "closed" };
+            return { delay: delayMs, from_state, transition_state: "closing", to_state: "closed", target_position: 0 };
         case "half_open":
-            return { delay: delayMs, from_state, transition_state: "opening", to_state: "half_open" };
+            return { delay: delayMs, from_state, transition_state: "opening", to_state: "half_open", target_position: 20 };
         case "stop":
-            return { delay: delayMs, from_state, transition_state: "stopped", to_state: "stopped" };
+            return { delay: delayMs, from_state, transition_state: "stopped", to_state: "stopped", target_position: from_position };
         default:
-            return { delay: delayMs, from_state, transition_state: "unknown", to_state: "unknown" };
+            return { delay: delayMs, from_state, transition_state: "unknown", to_state: "unknown", target_position: 50 };
     }
 
 };

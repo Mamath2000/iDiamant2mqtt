@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { translate, getTransition } = require('../utils/utils');
 
 const CMD_MAP = {
     open: 100,
@@ -15,9 +16,24 @@ class ShutterController {
         this.config = config;
         this.timers = new Map(); // deviceId -> timer
     }
+    checkDevices() {
+        logger.info('🔍 Vérification des appareils Netatmo...');
+        this.devicesHandler.getDevices().forEach(device => {
+            const deviceState = this.devicesHandler.persistedStates.get(device.id);
+            if (! deviceState || deviceState.state == '' || deviceState.position == '') {
+                logger.warn(`⚠️ Appareil ${device.name} (ID: ${device.id}) n'a pas d'état ou de position définie. On va fermer le volet.`);
+                this.handleCommand(device.id, 'close');
+            } else {
+                logger.info(`✅ Appareil ${device.name} (ID: ${device.id}) est prêt avec l'état ${device.state} et la position ${device.position}`);
+            }
+        });
+    }
 
     listenCommands() {
-        const topic = `${this.config.MQTT_TOPIC_PREFIX}/+/cmd`;
+
+        // Abonnement au topic de commande
+
+        let topic = `${this.config.MQTT_TOPIC_PREFIX}/+/cmd`;
         this.mqttClient.subscribe(topic, (err) => {
             if (err) {
                 logger.error('Erreur abonnement au topic de commande:', err);
@@ -26,43 +42,37 @@ class ShutterController {
             logger.info(`Abonnement réussi au topic de commande: ${topic}`);
         });
         this.mqttClient.setCommandHandler(async (deviceId, topic, message) => {
-            try {
-                await this.handleCommand(deviceId, message);
-            } catch (err) {
-                logger.error(`Erreur lors du traitement de la commande ${message} pour ${deviceId}:`, err);
+            if (deviceId === 'bridge') {
+                logger.info(`Commande reçue pour le bridge : ${message}.`);
+                if (message === 'refreshToken') {
+                    await this.devicesHandler.startTokenAutoRefresh(true);
+                }
+                return;
+            } else if (parseInt(deviceId) > 0 && Object.prototype.hasOwnProperty.call(CMD_MAP, message)) {
+                try {
+                    await this.handleCommand(deviceId, message);
+                } catch (err) {
+                    logger.error(`Erreur lors du traitement de la commande ${message} pour ${deviceId}:`, err);
+                }
+            } else {
+                logger.warn(`Commande reçue pour un device inconnu: ${deviceId}`);
             }
         });
     }
 
     async handleCommand(deviceId, cmd) {
-
-        const getTimerProgress = (deviceId) => {
-            const timerObj = this.timers.get(deviceId);
-            if (!timerObj) return null;
-            const elapsed = Date.now() - timerObj.start;
-            const percent = Math.min(100, Math.round((elapsed / timerObj.delay) * 100));
-            return percent; // 0 à 100
-        }
-
-        if (deviceId === 'bridge') {
-            logger.info(`Commande reçue pour le bridge : ${cmd}.`);
-            if (cmd === 'refreshToken') {
-                await this.devicesHandler.startTokenAutoRefresh(true);
-            }
-            return;
-        }
         const device = this.devicesHandler.getDevice(deviceId);
         if (!device) {
             logger.error(`Volet ${deviceId} introuvable`);
             return;
         }
-        if (!Object.prototype.hasOwnProperty.call(CMD_MAP, cmd)) return;
 
-        let current_position = 0;
+        let current_position = device.current_position || 0;
         // Annule toute transition en cours
         if (this.timers.has(deviceId)) {
-            current_position = getTimerProgress(deviceId);
-            clearTimeout(this.timers.get(deviceId));
+            const timerObj = this.timers.get(deviceId);
+            current_position = Math.min(100, Math.round(((Date.now() - timerObj.start) / timerObj.delay) * 100));
+            clearTimeout(timerObj.timeout);
             this.timers.delete(deviceId);
         }
 
@@ -75,7 +85,7 @@ class ShutterController {
             return;
         }
 
-        let targetState = getTransition(device.state, cmd);
+        let targetState = getTransition(device.state, current_position, cmd);
 
         // Publication état intermédiaire
         this.publishState(deviceId, targetState.transition_state, current_position);
@@ -85,7 +95,7 @@ class ShutterController {
             const delay = targetState.delay; // en ms
             this.timers.set(deviceId, {
                 timeout: setTimeout(() => {
-                    this.publishState(deviceId, targetState.to_state, targetState.courent_position);
+                    this.publishState(deviceId, targetState.to_state, targetState.target_position);
                     device.state = targetState.to_state;
                     this.timers.delete(deviceId);
                 }, delay),
@@ -95,8 +105,8 @@ class ShutterController {
             logger.info(`⏳ Transition programmée pour ${deviceId} vers ${targetState.to_state}`);
         } else {
             // Publication immédiate si pas de durée
-            this.publishState(deviceId, targetState.to_state, targetState.courent_position);
-            device.state = targetState.to_state;
+            this.publishState(deviceId, targetState.to_state, targetState.target_position);
+            // device.state = targetState.to_state;
         }
     }
 
@@ -130,14 +140,14 @@ class ShutterController {
     publishState(deviceId, state, current_position) {
         const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
         // Publications en mode "fire and forget" - pas d'await
-        this.mqttClient.publish(`${baseTopic}/state`, state, { retain: true });
+        this.mqttClient.publish(`${baseTopic}/state`, JSON.stringify({state: state, position: current_position}), { retain: true });
         this.mqttClient.publish(`${baseTopic}/state_fr`, translate(state), { retain: true });
-        this.mqttClient.publish(`${baseTopic}/current_position`, current_position, { retain: true });
+        // this.mqttClient.publish(`${baseTopic}/current_position`, String(current_position), { retain: true });
         this.mqttClient.publish(`${baseTopic}/cover_state`, state == 'half_open' ? 'stopped' : state, { retain: true });
 
         logger.debug(`État publié pour ${deviceId}: ${state} (${translate(state)})`);
 
-        this.devicesHandler.updateDeviceState(deviceId, state);
+        this.devicesHandler.updateDeviceState(deviceId, state, current_position);
         logger.debug(`État mis à jour pour ${deviceId}: ${state}`);
     }
 
@@ -150,67 +160,7 @@ class ShutterController {
     }
 }
 
-const translate = (state) => {
-    switch (state) {
-        case 'open': return 'Ouvert';
-        case 'closed': return 'Fermé';
-        case 'opening': return 'Ouverture';
-        case 'closing': return 'Fermeture';
-        case 'half_open': return 'Mi-ouvert';
-        case 'stopped': return 'Arrêté';
-        default: return 'Inconnu';
-    }
-}
 
 
-const getTransition = (from_state, cmd) => {
-    if (from_state === 'closed' || from_state === 'closing') {
-        switch (cmd) {
-            case "open":
-                return { delay: 42000, from_state, transition_state: "opening", to_state: "open", current_position: 100 };
-            case "close":
-                return { delay: 0, from_state, transition_state: "closing", to_state: "closed", current_position: 0 };
-            case "half_open":
-                return { delay: 3000, from_state, transition_state: "opening", to_state: "half_open", current_position: 20 };
-            case "stop":
-                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped", current_position: 20 };
-        }
-    } else if (from_state === 'open' || from_state === 'opening') {
-        switch (cmd) {
-            case "open":
-                return { delay: 0, from_state, transition_state: "opening", to_state: "open", current_position: 100 };
-            case "close":
-                return { delay: 42000, from_state, transition_state: "closing", to_state: "closed", current_position: 0 };
-            case "half_open":
-                return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open", current_position: 20 };
-            case "stop":
-                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped", current_position: 20 };
-        }
-    } else if (from_state === 'half_open') {
-        switch (cmd) {
-            case "open":
-                return { delay: 38000, from_state, transition_state: "opening", to_state: "open", current_position: 100 };
-            case "close":
-                return { delay: 7000, from_state, transition_state: "closing", to_state: "closed", current_position: 0 };
-            case "half_open":
-                return { delay: 0, from_state, transition_state: "opening", to_state: "half_open", current_position: 20 };
-            case "stop":
-                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped", current_position: 20 };
-        }
-    } else {
-        switch (cmd) {
-            case "open":
-                return { delay: 42000, from_state, transition_state: "opening", to_state: "open", current_position: 100 };
-            case "close":
-                return { delay: 42000, from_state, transition_state: "closing", to_state: "closed", current_position: 0 };
-            case "half_open":
-                return { delay: 48000, from_state, transition_state: "opening", to_state: "half_open", current_position: 20 };
-            case "stop":
-                return { delay: 0, from_state, transition_state: "stopped", to_state: "stopped", current_position: 20 };
-        }
-    }
-    // Default fallback
-    return { delay: 0, from_state, transition_state: "unknown", to_state: "unknown" };
-};
 
 module.exports = ShutterController;

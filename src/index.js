@@ -43,6 +43,8 @@ class App {
                     // Instanciation et démarrage du contrôleur de volets
                     const ShutterController = require('./controllers/shutter-controller');
                     const shutterController = new ShutterController(devicesHandler, this.mqttClient, config);
+
+                    shutterController.checkDevices();
                     shutterController.listenCommands();
                 } else {
                     logger.error('❌ Échec de l\'initialisation des appareils');

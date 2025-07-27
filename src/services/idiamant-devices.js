@@ -3,7 +3,7 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const NetatmoAuthHelper = require('../token/auth-helper');
 const haDiscoveryHelper = require('./ha-discovery-helper');
-const { formatDate } = require('../utils/date');
+const { translate, formatDate } = require('../utils/utils');
 
 class IDiamantDevicesHandler {
     constructor(config, tokenData, mqttClient = null) {
@@ -81,7 +81,7 @@ class IDiamantDevicesHandler {
                 if (this.mqttClient && this.bridgeId) {
                     this.publishHADiscoveryComponents(this.bridgeId);
                 }
-            }, 600000); // 10 minutes
+            }, 6 * 60 * 60 * 1000); // Toutes les 6 heures
 
             return this.updateShutterStatus()
                 .then(() => {
@@ -118,10 +118,24 @@ class IDiamantDevicesHandler {
         logger.info('🔄 Chargement des états persistés depuis MQTT...');
 
         // Configuration du handler pour recevoir les états
-        this.mqttClient.setStateHandler((deviceId, state) => {
+        this.mqttClient.setStateHandler((deviceId, state_position) => {
             if (this.devices.has(deviceId)) {
-                this.persistedStates.set(deviceId, state);
-                logger.debug(`📥 État persisté récupéré pour ${deviceId}: ${state}`);
+                // state_position doit être un objet {state: ..., position: ...}
+                let parsedState = state_position;
+                if (typeof state_position === 'string') {
+                    try {
+                        parsedState = JSON.parse(state_position);
+                    } catch (e) {
+                        parsedState = {};
+                        logger.warn(`⚠️ Impossible de parser l'état persistant pour ${deviceId}: ${state_position}`);
+                    }
+                }
+                if (typeof parsedState === 'object' && parsedState !== null && 'state' in parsedState && 'position' in parsedState) {
+                    this.persistedStates.set(deviceId, parsedState);
+                    logger.debug(`📥 État persisté récupéré pour ${deviceId}: ${JSON.stringify(parsedState)}`);
+                } else {
+                    logger.warn(`⚠️ Format d'état persistant invalide pour ${deviceId}: ${JSON.stringify(parsedState)}`);
+                }
             }
         });
 
@@ -174,11 +188,15 @@ class IDiamantDevicesHandler {
                 if (device) {
                     device.reachable = module.reachable;
                     device.last_seen = module.last_seen;
-                    device.is_close = (module.current_position === 0) ? 1 : 0;
-                    device.is_open = (module.current_position === 100) ? 1 : 0;
-                    device.current_position = module.current_position;
-                    device.state = this.persistedStates.get(module.id);
-
+                    if (this.persistedStates.has(module.id)) {
+                        const persistedState = this.persistedStates.get(module.id);
+                        device.state = persistedState.state || 'stopped';
+                        device.current_position = persistedState.position || 50;}
+                    else {
+                        device.state = 'stopped';
+                        device.current_position = 50;
+                    }
+                    
                     if (oldHash !== getHash(device)) {
                         devicesUpdated = true;
                         this.devices.set(module.id, device);
@@ -242,24 +260,21 @@ class IDiamantDevicesHandler {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;
             publishAsync(`${baseTopic}/lwt`, (device.reachable ? 'online' : 'offline'), { retain: true });
             publishAsync(`${baseTopic}/name`, String(device.name.charAt(0).toUpperCase() + device.name.slice(1)), { retain: true });
-            // publishAsync(`${baseTopic}/state`, String(device.state), { retain: true });
             publishAsync(`${baseTopic}/state_fr`, String(translate(device.state)), { retain: true });
-            publishAsync(`${baseTopic}/current_position`, String(position(device.state)), { retain: true });
             publishAsync(`${baseTopic}/reachable`, String(device.reachable), { retain: false });
             publishAsync(`${baseTopic}/last_seen`, String(device.last_seen), { retain: true });
-            publishAsync(`${baseTopic}/is_close`, String(device.is_close), { retain: true });
-            publishAsync(`${baseTopic}/is_open`, String(device.is_open), { retain: true });
             publishAsync(`${baseTopic}/cover_state`, String(device.state == 'half_open' ? 'stopped' : device.state), { retain: true });
         });
     }
 
-    updateDeviceState(deviceId, newState) {
+    updateDeviceState(deviceId, newState, newPosition) {
         const device = this.devices.get(deviceId);
         if (device) {
             device.state = newState;
+            device.position = newPosition;
             this.devices.set(deviceId, device);
             // Mettre à jour également l'état persisté
-            this.persistedStates.set(deviceId, newState);
+            this.persistedStates.set(deviceId, {state: newState, position: newPosition});
             logger.debug(`État du device ${deviceId} mis à jour: ${newState}`);
         }
     }
@@ -274,37 +289,6 @@ class IDiamantDevicesHandler {
             this.haDiscoveryInterval = null;
         }
         // Ajoute ici tout autre timer ou ressource à nettoyer
-    }
-}
-
-const position = (state) => {
-    switch (state) {
-        case 'open': return 100;
-        case 'closed': return 0;
-        case 'half_open': return 20;
-        case 'opening': return 100; // En ouverture, on considère que c'est ouvert
-        case 'closing': return 0; // En fermeture, on considère que c'est fermé
-        case 'stopped': return 20; // Arrêté, on reste à mi-ouvert
-        default: return null; // Inconnu
-    }
-}
-
-const translate = (state) => {
-    switch (state) {
-        case 'open':
-            return 'Ouvert';
-        case 'closed':
-            return 'Fermé';
-        case 'opening':
-            return 'Ouverture';
-        case 'closing':
-            return 'Fermeture';
-        case 'half_open':
-            return 'Mi-ouvert';
-        case 'stopped':
-            return 'Arrêté';
-        default:
-            return 'Inconnu';
     }
 }
 
