@@ -1,3 +1,4 @@
+
 # Makefile pour iDiamant2MQTT
 
 # Variables
@@ -11,26 +12,42 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-.PHONY: help install dev start test lint clean docker-build docker-run setup auth-url install-service uninstall-service
+.PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup auth-url install-service uninstall-service service-start service-stop service-logs
+.PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup auth-url service-install service-uninstall service-start service-stop service-logs
 
-# Affichage de l'aide
+# ========================
+# Install
+# ========================
 help:
 	@echo "$(GREEN)iDiamant2MQTT - Makefile$(NC)"
 	@echo ""
-	@echo "$(YELLOW)Commandes disponibles :$(NC)"
+	@echo "$(YELLOW)Install :$(NC)"
 	@echo "  $(GREEN)make setup$(NC)       - Configuration initiale du projet"
 	@echo "  $(GREEN)make install$(NC)     - Installation des dépendances"
+	@echo "  $(GREEN)make clean$(NC)       - Nettoyage des fichiers temporaires"
+	@echo ""
+	@echo "$(YELLOW)Run & Debug :$(NC)"
 	@echo "  $(GREEN)make dev$(NC)         - Lancement en mode développement"
 	@echo "  $(GREEN)make start$(NC)       - Lancement en mode production"
-	@echo "  $(GREEN)make clean$(NC)       - Nettoyage des fichiers temporaires"
-	@echo "  $(GREEN)make docker-build$(NC) - Construction de l'image Docker"
-	@echo "  $(GREEN)make docker-run$(NC)  - Lancement du conteneur Docker"
-	@echo "  $(GREEN)make install-service$(NC)   - Installer le service systemd (démarrage auto)"
-	@echo "  $(GREEN)make uninstall-service$(NC) - Désinstaller le service systemd"
-	@echo ""
-	@echo "$(YELLOW)Authentification Netatmo :$(NC)"
 	@echo "  $(GREEN)make auth-url$(NC)    - Générer l'URL d'autorisation OAuth2"
 	@echo ""
+	@echo "$(YELLOW)Docker :$(NC)"
+	@echo "  $(GREEN)make docker-build$(NC) - Construction de l'image Docker"
+	@echo "  $(GREEN)make docker-run$(NC)  - Lancement du conteneur Docker"
+	@echo "  $(GREEN)make docker-stop$(NC) - Arrêt du conteneur Docker"
+	@echo "  $(GREEN)make docker-logs$(NC) - Affichage des logs Docker"
+	@echo ""
+	@echo "$(YELLOW)Service :$(NC)"
+	@echo "  $(GREEN)make service-install$(NC)   - Installer le service systemd (démarrage auto)"
+	@echo "  $(GREEN)make service-uninstall$(NC) - Désinstaller le service systemd"
+	@echo "  $(GREEN)make service-start$(NC)     - Démarrer le service systemd"
+	@echo "  $(GREEN)make service-stop$(NC)      - Arrêter le service systemd"
+	@echo "  $(GREEN)make service-logs$(NC)      - Afficher les logs du service systemd"
+	@echo ""
+
+# ========================
+# Install
+# ========================
 
 
 # Configuration initiale
@@ -52,6 +69,8 @@ dev:
 # Mode production
 start:
 	@echo "$(GREEN)Lancement en mode production...$(NC)"
+# Run & Debug
+# ========================
 	npm start
 
 # Nettoyage
@@ -69,6 +88,8 @@ docker-build:
 
 # Lancement Docker
 docker-run:
+# Docker
+# ========================
 	@echo "$(GREEN)Lancement du conteneur Docker...$(NC)"
 	docker run -d --name idiamant2mqtt --env-file .env -p 3000:3000 $(DOCKER_IMAGE):$(DOCKER_TAG)
 
@@ -92,6 +113,8 @@ check-env:
 
 # Par défaut, afficher l'aide
 .DEFAULT_GOAL := help
+# Service
+# ========================
 
 # Commandes d'authentification Netatmo
 auth-url:
@@ -99,7 +122,7 @@ auth-url:
 	@node src/token/auth-url-generator.js
 
 # Désinstallation du service systemd
-uninstall-service:
+service-uninstall:
 	@echo "Suppression du service systemd idiamant2mqtt..."
 	sudo systemctl stop idiamant2mqtt.service || true
 	sudo systemctl disable idiamant2mqtt.service || true
@@ -107,10 +130,22 @@ uninstall-service:
 	sudo systemctl daemon-reload
 	@echo "Service supprimé. Utilisez 'sudo systemctl status idiamant2mqtt' pour vérifier."
 
-# Astuce :
-# Pour installer le service : make install-service
-# Pour désinstaller : make uninstall-service
 # Installation du service systemd
-install-service:
+service-install:
 	@echo "Installation du service systemd idiamant2mqtt..."
 	@bash scripts/install-systemd-service.sh
+
+# Démarrer le service systemd
+service-start:
+	@echo "Démarrage du service systemd idiamant2mqtt..."
+	sudo systemctl start idiamant2mqtt.service
+
+# Arrêter le service systemd
+service-stop:
+	@echo "Arrêt du service systemd idiamant2mqtt..."
+	sudo systemctl stop idiamant2mqtt.service
+
+# Logs du service systemd
+service-logs:
+	@echo "Affichage des logs du service systemd idiamant2mqtt..."
+	sudo journalctl -u idiamant2mqtt.service -f
