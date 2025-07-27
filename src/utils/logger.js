@@ -66,9 +66,4 @@ const logger = winston.createLogger({
   ]
 });
 
-// En développement, on veut voir tous les logs
-if ((process.env.NODE_ENV || 'development') === 'development') {
-  logger.level = 'debug';
-}
-
 module.exports = logger;

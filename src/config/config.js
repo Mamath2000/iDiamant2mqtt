@@ -38,6 +38,7 @@ const config = {
 // Validation des configurations critiques
 const logger = require('../utils/logger');
 if (config.NODE_ENV === 'production') {
+  // En production, on s'assure que les champs critiques sont définis
   const requiredFields = [
     'IDIAMANT_CLIENT_ID',
     'IDIAMANT_CLIENT_SECRET'
@@ -47,6 +48,9 @@ if (config.NODE_ENV === 'production') {
     logger.error(`Configuration manquante en production: ${missingFields.join(', ')}`);
     process.exit(1);
   }
+  // En production, on veut un niveau de log warn
+  config.LOG_LEVEL = 'warn';
+  logger.info('✅ Configuration validée pour la production');
 }
 
 module.exports = config;
