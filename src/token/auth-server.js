@@ -26,7 +26,8 @@ class NetatmoAuthServer {
 
   loadAuthState() {
     try {
-      const statePath = '/root/iDiamant/temp/.auth-state';
+      const statePath = path.join(process.cwd(), 'temp', '.auth-state');
+
       if (fs.existsSync(statePath)) {
         const data = JSON.parse(fs.readFileSync(statePath, 'utf8'));
         this.expectedState = data.state;
@@ -79,7 +80,8 @@ class NetatmoAuthServer {
         timestamp: Date.now()
       };
 
-      const tokenPath = '/root/iDiamant/temp/.netatmo-tokens.json';
+      const tokenPath = path.join(process.cwd(), 'temp', '.netatmo-tokens.json');
+
       fs.writeFileSync(tokenPath, JSON.stringify(tokenData, null, 2));
       logger.info('Token sauvegardé localement');
     } catch (error) {

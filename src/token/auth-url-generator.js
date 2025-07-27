@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const config = require('../config/config');
 const NetatmoAuthHelper = require('./auth-helper');
 const logger = require('../utils/logger');
+const path = require('path');
 
 /**
  * Générateur d'URL d'autorisation OAuth2 pour Netatmo
@@ -55,8 +56,10 @@ class NetatmoAuthUrlGenerator {
     logger.info('Après autorisation, le serveur webhook démarre automatiquement et le token sera sauvegardé.');
 
     // Sauvegarde de l'état pour vérification
+    const statePath = path.join(process.cwd(), 'temp', '.auth-state');
+
     require('fs').writeFileSync(
-      '/root/iDiamant/temp/.auth-state',
+      statePath,
       JSON.stringify({ state: auth.state, timestamp: Date.now() })
     );
 
