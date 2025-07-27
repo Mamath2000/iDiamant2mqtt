@@ -117,10 +117,10 @@ class NetatmoAuthServer {
         
         // Sauvegarde locale uniquement
         await this.saveTokens(response.data);
-        // Publication Home Assistant Discovery (état + validité)
-        const HaDiscoveryPublisher = require('./ha-discovery');
-        const haPublisher = new HaDiscoveryPublisher(this.mqttClient);
-        haPublisher.publishAuthStatus(response.data);
+        // // Publication Home Assistant Discovery (état + validité)
+        // const HaDiscoveryPublisher = require('./ha-discovery');
+        // const haPublisher = new HaDiscoveryPublisher(this.mqttClient);
+        // haPublisher.publishAuthStatus(response.data);
         return response.data;
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
