@@ -5,8 +5,7 @@ const config = {
   IDIAMANT_API_URL: process.env.IDIAMANT_API_URL || 'https://api.netatmo.com',
   IDIAMANT_CLIENT_ID: process.env.IDIAMANT_CLIENT_ID,
   IDIAMANT_CLIENT_SECRET: process.env.IDIAMANT_CLIENT_SECRET,
-  IDIAMANT_USERNAME: process.env.IDIAMANT_USERNAME,
-  IDIAMANT_PASSWORD: process.env.IDIAMANT_PASSWORD,
+  IDIAMANT_IP: process.env.IDIAMANT_IP || '',
   NETATMO_REDIRECT_URI: process.env.NETATMO_REDIRECT_URI,
   
   // Configuration MQTT
@@ -41,9 +40,7 @@ const logger = require('../utils/logger');
 if (config.NODE_ENV === 'production') {
   const requiredFields = [
     'IDIAMANT_CLIENT_ID',
-    'IDIAMANT_CLIENT_SECRET',
-    'IDIAMANT_USERNAME',
-    'IDIAMANT_PASSWORD'
+    'IDIAMANT_CLIENT_SECRET'
   ];
   const missingFields = requiredFields.filter(field => !config[field]);
   if (missingFields.length > 0) {

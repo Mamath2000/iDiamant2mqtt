@@ -101,9 +101,9 @@ class IDiamantDevicesHandler {
         if (!this.mqttClient) {
             logger.warn('⚠️ Client MQTT non initialisé ou découverte Home Assistant désactivée');
             return;
-        } 
+        }
         if (!this.config.HA_DISCOVERY) return;
-        
+
         logger.info('📡 Publication des composants Home Assistant pour le pont Idéamant...');
         this.HADiscoveryHelper.publishGatewayComponents(bridgeId)
         logger.info('📡 Publication des composants Home Assistant pour les volets...');
@@ -174,8 +174,8 @@ class IDiamantDevicesHandler {
                 if (device) {
                     device.reachable = module.reachable;
                     device.last_seen = module.last_seen;
-                    device.is_close = module.current_position === 0;
-                    device.is_open = module.current_position === 100;
+                    device.is_close = (module.current_position === 0) ? 1 : 0;
+                    device.is_open = (module.current_position === 100) ? 1 : 0;
                     device.current_position = module.current_position;
                     device.state = this.persistedStates.get(module.id);
 
@@ -244,11 +244,12 @@ class IDiamantDevicesHandler {
             publishAsync(`${baseTopic}/name`, String(device.name.charAt(0).toUpperCase() + device.name.slice(1)), { retain: true });
             // publishAsync(`${baseTopic}/state`, String(device.state), { retain: true });
             publishAsync(`${baseTopic}/state_fr`, String(translate(device.state)), { retain: true });
+            publishAsync(`${baseTopic}/current_position`, String(position(device.state)), { retain: true });
             publishAsync(`${baseTopic}/reachable`, String(device.reachable), { retain: false });
             publishAsync(`${baseTopic}/last_seen`, String(device.last_seen), { retain: true });
             publishAsync(`${baseTopic}/is_close`, String(device.is_close), { retain: true });
             publishAsync(`${baseTopic}/is_open`, String(device.is_open), { retain: true });
-            publishAsync(`${baseTopic}/current_position`, String(device.current_position), { retain: true });
+            publishAsync(`${baseTopic}/cover_state`, String(device.state == 'half_open' ? 'stopped' : device.state), { retain: true });
         });
     }
 
@@ -263,8 +264,30 @@ class IDiamantDevicesHandler {
         }
     }
 
+    stop() {
+        if (this.statusInterval) {
+            clearInterval(this.statusInterval);
+            this.statusInterval = null;
+        }
+        if (this.haDiscoveryInterval) {
+            clearInterval(this.haDiscoveryInterval);
+            this.haDiscoveryInterval = null;
+        }
+        // Ajoute ici tout autre timer ou ressource à nettoyer
+    }
 }
 
+const position = (state) => {
+    switch (state) {
+        case 'open': return 100;
+        case 'closed': return 0;
+        case 'half_open': return 20;
+        case 'opening': return 100; // En ouverture, on considère que c'est ouvert
+        case 'closing': return 0; // En fermeture, on considère que c'est fermé
+        case 'stopped': return 20; // Arrêté, on reste à mi-ouvert
+        default: return null; // Inconnu
+    }
+}
 
 const translate = (state) => {
     switch (state) {

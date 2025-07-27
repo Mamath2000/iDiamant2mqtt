@@ -21,17 +21,31 @@ class haDiscoveryHelper {
             name: 'Idiamant Gateway',
             manufacturer: 'Netatmo',
             connections: [
-                ['mac', bridgeId] // Remplacer par l'adresse MAC de votre appareil
+                ['mac', bridgeId],  // Remplacer par l'adresse MAC de votre appareil
+                ['ip', this.config.IDIAMANT_IP]
             ]
         }
         const origin = {
             name: "iDiamant2mqtt"
         };
         const stateTopic = `${this.baseTopic}/bridge`;
+        const availability = [
+            {
+                topic: `${this.baseTopic}/lwt`,
+                payload_available: 'online',
+            },
+            {
+                topic: `${stateTopic}/lwt`,
+                payload_available: 'online',
+            }
+        ];
+
         const gatewayTopic = `${this.discoveryPrfix}/device/${identifier}/config`;
         const gatewayPayload = {
             device: device,
             origin: origin,
+            availability: availability,
+            availability_mode: "all",
             components: {
                 idiamant_gateway_refresh_token: {
                     platform: 'button',
@@ -102,10 +116,27 @@ class haDiscoveryHelper {
             name: "iDiamant2mqtt"
         };
         const stateTopic = `${this.baseTopic}/${device.id}`;
+        const availability = [
+            {
+                topic: `${this.baseTopic}/lwt`,
+                payload_available: 'online',
+            },
+            {
+                topic: `${this.baseTopic}/bridge/lwt`,
+                payload_available: 'online',
+            },
+            {
+                topic: `${stateTopic}/lwt`,
+                payload_available: 'online',
+            }
+        ];
+
         const gatewayTopic = `${this.discoveryPrfix}/device/${identifier}/config`;
         const gatewayPayload = {
             device: device_def,
             origin: origin,
+            availability: availability,
+            availability_mode: "all",            
             components: {
                 [`idiamant_${device.name}_state_label`]: {
                     platform: "sensor",
@@ -133,7 +164,7 @@ class haDiscoveryHelper {
                     unique_id: `idiamant_${device.id}_is_open`,
                     name: "Est ouvert",
                     state_topic: `${stateTopic}/is_open`,
-                    value_template: "{{ 1 if value==true else 0 }}",
+                    value_template: "{{ value }}",
                     payload_on: 1,
                     payload_off: 0,
                     force_update: true,
@@ -146,7 +177,7 @@ class haDiscoveryHelper {
                     unique_id: `idiamant_${device.id}_is_closed`,
                     name: "Est fermé",
                     state_topic: `${stateTopic}/is_close`,
-                    value_template: "{{ 1 if value==true else 0 }}",
+                    value_template: "{{ value }}",
                     payload_on: 1,
                     payload_off: 0,
                     force_update: true,
@@ -206,8 +237,8 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_etat`]: {
                     platform: 'binary_sensor',
-                    object_id: `volet_${device.name}_etat`,
-                    unique_id: `idiamant_${device.id}_etat`,
+                    object_id: `volet_${device.name}_connected`,
+                    unique_id: `idiamant_${device.id}_connected`,
                     name: 'État',
                     force_update: true,
                     state_topic: `${stateTopic}/lwt`,
@@ -221,7 +252,10 @@ class haDiscoveryHelper {
                     unique_id: `idiamant_${device.id}_cover`,
                     name: `Volet ${device.name.charAt(0).toUpperCase() + device.name.slice(1)}`,
                     command_topic: `${stateTopic}/cmd`,
-                    state_topic: `${stateTopic}/state`,
+                    state_topic: `${stateTopic}/cover_state`,
+                    position_topic: `${stateTopic}/current_position`,
+                    position_open: 100,
+                    position_closed: 0,
                     payload_open: 'open',
                     payload_close: 'close',
                     payload_stop: 'stop',
