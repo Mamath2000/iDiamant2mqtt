@@ -9,60 +9,35 @@ const {  formatDate } = require('../utils/utils');
 class NetatmoAuthHelper {
     constructor(mqttClient) {
         // Chemin absolu depuis la racine du projet
-        // this.tokenPath = path.join(process.cwd(), 'temp', '.netatmo-tokens.json');
         this.bridgeTopic = `${config.MQTT_TOPIC_PREFIX}/bridge`;
-        this.tokenRefreshHandler = null;
         this.mqttClient = mqttClient;
         this.tokenData = null; // Stocke le token récupéré
+
+        // Abonnement direct au topic token dès l'init
+        this.mqttClient.setTokenHandler(this.tokenRefreshHandler.bind(this));
+        this.mqttClient.subscribe(`${this.bridgeTopic}/token`);
     }
 
-    // Méthode pour récupérer le token depuis MQTT (attend le message retain)
-    async getTokenData() {
-        const topic = `${this.bridgeTopic}/token`;
-        
-        return new Promise(async (resolve, reject) => {
-            try {
-                // Handler temporaire pour capturer le message retain
-                const tempHandler = (deviceId, message) => {
-                    if (deviceId === "bridge") {
-                        try {
-                            const token = JSON.parse(message.toString());
-                            // token.timestamp = Date.now(); // Ajoute le timestamp actuel
-                            this.tokenData = token;
-                            logger.info('✅ Token Netatmo récupéré via MQTT (retain)');
-                            // Supprimer le handler temporaire
-                            this.mqttClient.setTokenHandler(null);
-                            if (!this.isTokenValid(token)) {
-                                logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
-                                resolve(null);
-                            } else {
-                                resolve(token);
-                            }
-                        } catch (err) {
-                            logger.warn('⚠️ Impossible de parser le token depuis MQTT.');
-                            this.mqttClient.setTokenHandler(null);
-                            resolve(null);
-                        }
-                    }
-                };
+    // Plus besoin de getTokenData : abonnement permanent dès l'init
 
-                // Définir le handler avant de s'abonner
-                this.mqttClient.setTokenHandler(tempHandler);
+    // Handler permanent pour les mises à jour de token (rafraîchissements automatiques)
+    tokenRefreshHandler(deviceId, message) {
+        if (deviceId === "bridge") {
+            try {
+                const token = JSON.parse(message.toString());
+                this.tokenData = token;
+                logger.info('🔄 Token Netatmo mis à jour via MQTT');
                 
-                // S'abonner au topic pour recevoir le message retain
-                await this.mqttClient.subscribe(topic);
-                
-                // Timeout de sécurité (5 secondes)
-                setTimeout(() => {
-                    this.mqttClient.setTokenHandler(null);
-                    resolve(null);
-                }, 5000);
-                
+                if (this.isTokenValid(token)) {
+                    // Redémarre le cycle de rafraîchissement automatique avec le nouveau token
+                    this.startTokenAutoRefresh();
+                } else {
+                    logger.error('❌ Token Netatmo reçu mais invalide');
+                }
             } catch (err) {
-                logger.error('❌ Erreur lors de la récupération du token:', err);
-                reject(err);
+                logger.warn('⚠️ Impossible de parser le token depuis MQTT:', err);
             }
-        });
+        }
     }
 
     isTokenValid(newTokenData) {
@@ -73,8 +48,8 @@ class NetatmoAuthHelper {
         logger.info(`Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
         this.tokenData = newTokenData; // Met à jour le tokenData
         // publie les infos du token sur MQTT
-        this.mqttClient.publish(`${this.bridgeTopic}/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-        this.mqttClient.publish(`${this.bridgeTopic}/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
+        this.mqttClient.publish(`${this.bridgeTopic}/expire_date`, formatDate(newTokenData.timestamp + (newTokenData.expires_in * 1000)), { retain: true });
+        this.mqttClient.publish(`${this.bridgeTopic}/expire_at_ts`, String(newTokenData.timestamp + (newTokenData.expires_in * 1000)), { retain: true });
         return expireMs > nowMs;
     }
 
@@ -117,7 +92,7 @@ class NetatmoAuthHelper {
             // Publie le token sur MQTT
             this.tokenData = newToken; // Met à jour le tokenData
             await this.mqttClient.publish(`${this.bridgeTopic}/token`, JSON.stringify(this.tokenData), { retain: true });
-            this.isTokenValid(newToken);
+            // this.isTokenValid(newToken);
             // await this.mqttClient.publish(`${this.bridgeTopic}/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
             // await this.mqttClient.publish(`${this.bridgeTopic}/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
             logger.info('✅ Token Netatmo rafraîchi et publié sur MQTT.');
