@@ -36,66 +36,66 @@ class NetatmoAuthServer {
     }
   }
 
-    // Suppression du fichier .auth-state après la première authentification
+  // Suppression du fichier .auth-state après la première authentification
   removeAuthStateFile() {
-      const authStatePath = path.join(process.cwd(), 'temp', '.auth-state');
-      if (fs.existsSync(authStatePath)) {
-          try {
-              fs.unlinkSync(authStatePath);
-              logger.info('🗑️ Fichier .auth-state supprimé après authentification.');
-          } catch (err) {
-              logger.warn('⚠️ Impossible de supprimer .auth-state:', err);
-          }
+    const authStatePath = path.join(process.cwd(), 'temp', '.auth-state');
+    if (fs.existsSync(authStatePath)) {
+      try {
+        fs.unlinkSync(authStatePath);
+        logger.info('🗑️ Fichier .auth-state supprimé après authentification.');
+      } catch (err) {
+        logger.warn('⚠️ Impossible de supprimer .auth-state:', err);
       }
+    }
   }
 
-      // --- Assistant CLI (conserve la logique existante) ---
+  // --- Assistant CLI (conserve la logique existante) ---
   checkConfiguration() {
-        const logLevel = (config.LOG_LEVEL || 'info').toLowerCase();
-        let checks = [
-            {
-                name: 'IDIAMANT_CLIENT_ID',
-                value: config.IDIAMANT_CLIENT_ID,
-                valid: config.IDIAMANT_CLIENT_ID && config.IDIAMANT_CLIENT_ID !== 'your_client_id_here'
-            },
-            {
-                name: 'IDIAMANT_CLIENT_SECRET',
-                value: config.IDIAMANT_CLIENT_SECRET,
-                valid: config.IDIAMANT_CLIENT_SECRET && config.IDIAMANT_CLIENT_SECRET !== 'your_client_secret_here'
-            },
-            {
-                name: 'MQTT_BROKER_URL',
-                value: config.MQTT_BROKER_URL,
-                valid: config.MQTT_BROKER_URL && config.MQTT_BROKER_URL !== ''
-            },
-            {
-                name: 'NETATMO_REDIRECT_URI',
-                value: config.NETATMO_REDIRECT_URI,
-                valid: config.NETATMO_REDIRECT_URI && config.NETATMO_REDIRECT_URI !== ''
-            }
-        ];
-        let allValid = true;
-        checks.forEach(check => {
-            const status = check.valid ? '✅' : '❌';
-            const value = check.valid ?
-                (check.value.length > 30 ? check.value.substring(0, 30) + '...' : check.value) :
-                'NON CONFIGURÉ';
-            if (logLevel === 'debug') {
-                logger.debug(`${status} ${check.name}: ${value}`);
-            }
-            if (!check.valid) {
-                allValid = false;
-            }
-        });
-        if (allValid) {
-            if (logLevel === 'debug') logger.debug('');
-            logger.info('✅ Configuration valide pour l\'authentification');
-        } else {
-            logger.error('❌ Configuration incomplète. Éditez le fichier .env');
-            return false;
-        }
-        return true;
+    const logLevel = (config.LOG_LEVEL || 'info').toLowerCase();
+    let checks = [
+      {
+        name: 'IDIAMANT_CLIENT_ID',
+        value: config.IDIAMANT_CLIENT_ID,
+        valid: config.IDIAMANT_CLIENT_ID && config.IDIAMANT_CLIENT_ID !== 'your_client_id_here'
+      },
+      {
+        name: 'IDIAMANT_CLIENT_SECRET',
+        value: config.IDIAMANT_CLIENT_SECRET,
+        valid: config.IDIAMANT_CLIENT_SECRET && config.IDIAMANT_CLIENT_SECRET !== 'your_client_secret_here'
+      },
+      {
+        name: 'MQTT_BROKER_URL',
+        value: config.MQTT_BROKER_URL,
+        valid: config.MQTT_BROKER_URL && config.MQTT_BROKER_URL !== ''
+      },
+      {
+        name: 'NETATMO_REDIRECT_URI',
+        value: config.NETATMO_REDIRECT_URI,
+        valid: config.NETATMO_REDIRECT_URI && config.NETATMO_REDIRECT_URI !== ''
+      }
+    ];
+    let allValid = true;
+    checks.forEach(check => {
+      const status = check.valid ? '✅' : '❌';
+      const value = check.valid ?
+        (check.value.length > 30 ? check.value.substring(0, 30) + '...' : check.value) :
+        'NON CONFIGURÉ';
+      if (logLevel === 'debug') {
+        logger.debug(`${status} ${check.name}: ${value}`);
+      }
+      if (!check.valid) {
+        allValid = false;
+      }
+    });
+    if (allValid) {
+      if (logLevel === 'debug') logger.debug('');
+      logger.info('✅ Configuration valide pour l\'authentification');
+    } else {
+      logger.error('❌ Configuration incomplète. Éditez le fichier .env');
+      return false;
     }
+    return true;
+  }
 
   async connectMQTT() {
     try {
@@ -161,31 +161,68 @@ class NetatmoAuthServer {
         const tokenData = response.data;
         tokenData.timestamp = Date.now();
 
-        // Publie le token sur MQTT au bon topic
-        const MQTTClient = require('../services/mqtt-client');
-        const mqttClient = new MQTTClient(config);
-        await mqttClient.connect();
-        const topic = `${config.MQTT_TOPIC_PREFIX}/bridge/token`;
         try {
-          await mqttClient.publish(
-            topic,
-            JSON.stringify(tokenData),
-            { retain: true }
-          );
-          logger.info(`✅ Token Netatmo publié sur le topic MQTT : ${topic}`);
+          const homesData = await this.checkTokenAndGetHomesData(tokenData.access_token);
+          tokenData.homeId = homesData.body.homes[0].id;
+          logger.info(`🏠 Données des maisons récupérées : ${homesData.body.homes.length ? `${homesData.body.homes.length} maison(s) trouvée(s)` : 'Aucune maison trouvée'}`);
+
+          // Publie le token sur MQTT au bon topic
+          const MQTTClient = require('../services/mqtt-client');
+          const mqttClient = new MQTTClient(config);
+          await mqttClient.connect();
+          const topic = `${config.MQTT_TOPIC_PREFIX}/bridge/token`;
+          try {
+            await mqttClient.publish(
+              topic,
+              JSON.stringify(tokenData),
+              { retain: true }
+            );
+            logger.info(`✅ Token Netatmo publié sur le topic MQTT : ${topic}`);
+          } catch (err) {
+            logger.error('Erreur lors de la publication MQTT:', err);
+            throw err;
+          }
+          await mqttClient.disconnect();
+          return tokenData;
+
         } catch (err) {
-          logger.error('Erreur lors de la publication MQTT:', err);
+          logger.error('❌ Échec de la récupération des données des maisons:', err);
           throw err;
         }
-        await mqttClient.disconnect();
-        return tokenData;
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
     } catch (error) {
       logger.error('Erreur échange token:', error);
       throw error;
     }
+  }
+
+  checkTokenAndGetHomesData(token) {
+    return new Promise((resolve, reject) => {
+      const api = axios.create({
+          baseURL: `${config.IDIAMANT_API_URL}`,
+          headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+          }
+      });
+      logger.info('Récupération des données des maisons...');
+      // Utilisation de l'API Netatmo pour récupérer les données des maisons
+      api.get('/api/homesdata')
+        .then((response) => {
+          if (response.status === 200) {
+            resolve(response.data);
+          } else {
+            reject(new Error(`HTTP ${response.status}: ${response.statusText}`));
+          }
+        })
+        .catch((error) => {
+          logger.error('Erreur lors de la récupération des données des maisons:', error);
+          reject(error);
+        });
+    });
   }
 
   handleCallback(req, res) {
@@ -244,6 +281,7 @@ class NetatmoAuthServer {
                 <ul>
                   <li><strong>Access Token:</strong> ${tokens.access_token.substring(0, 30)}...</li>
                   <li><strong>Refresh Token:</strong> ${tokens.refresh_token.substring(0, 30)}...</li>
+                  <li><strong>Home ID:</strong> ${tokens.homeId.substring(0, 30)}...</li>
                   <li><strong>Expire dans:</strong> ${tokens.expires_in} secondes</li>
                 </ul>
               </div>
