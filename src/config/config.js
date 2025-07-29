@@ -31,15 +31,8 @@ const config = {
   SYNC_INTERVAL: parseInt(process.env.SYNC_INTERVAL) || 30000, // 30 secondes
 };
 
-// ✅ Auto-ajustement si debugger détecté
-const isDebugging = process.execArgv.some(arg => 
-    arg.includes('--inspect') || 
-    arg.includes('--debug') || 
-    arg.includes('--debug-brk')
-) || !!process.debugPort;
-
-if (isDebugging) {
-    console.log('🐛 Mode debugger détecté - ajustements automatiques :');
+if (process.env.DEBUG_MODE === 'vscode') {
+    console.log('🐛 Mode debugger détecté (vscode) - ajustements automatiques :');
     console.log('  - LOG_LEVEL: debug');
     console.log('  - MQTT_KEEPALIVE: 900 (15 min)');
     
