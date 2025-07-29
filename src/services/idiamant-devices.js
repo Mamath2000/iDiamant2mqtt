@@ -5,9 +5,9 @@ const haDiscoveryHelper = require('./ha-discovery-helper');
 const { translate, formatDate } = require('../utils/utils');
 
 class IDiamantDevicesHandler {
-    constructor(config, mqttClient, api) {
+    constructor(config, mqttClient, api, homeId) {
         this.api = api;
-        this.homeId = null;
+        this.homeId = homeId;
         this.bridgeId = null;
         this.devices = new Map();
         this.persistedStates = new Map(); // États récupérés depuis MQTT
@@ -24,18 +24,25 @@ class IDiamantDevicesHandler {
 
     async initialize() {
         logger.info('🔄 Initialisation des appareils iDiamant...');
-        return this.api.get("/homesdata")
-        .then(async (response) => {
+        // Vérification de la configuration
+        const response = await this.api.get("/api/homesdata")
+        if (response.status !== 200) {
+            logger.error('❌ Détails de l\'erreur API:', {
+                status: response.error?.status,
+                statusText: response.error?.statusText,
+                data: response.error?.data,
+                url: response.config?.url,
+                headers: response.config?.headers
+            });
+            logger.error('❌ Erreur lors de l\'initialisation des devices Netatmo:', response);
+            return false;
+        }
+        try {
             const homes = response.data.body.homes;
-            if (!homes || homes.length === 0) {
-                logger.error('Aucune maison Netatmo trouvée.');
-                return false;
-            }
-            this.homeId = homes[0].id;
+            this.bridgeId = homes[0].modules[0].id;
             logger.debug(`🏠 home_id: ${this.homeId}`);
-            this.bridgeId = homes[0].modules && homes[0].modules.length > 0 ? homes[0].modules[0].id : null;
             logger.debug(`🔗 bridge_id: ${this.bridgeId}`);
-            
+
             // Découverte des volets (modules de type "Bubendorff")
             this.devices.clear();
             homes[0].modules.forEach(module => {
@@ -51,62 +58,53 @@ class IDiamantDevicesHandler {
             logger.info(`🔍 ${this.devices.size} volets Bubendorff découverts`);
 
             // Récupération des états persistés depuis MQTT si disponible
-            if (this.mqttClient) {
-                await this.loadPersistedStates();
-            } else {
-                logger.warn('⚠️ Client MQTT non initialisé, les états persistés ne seront pas chargés');
-            }
+            await this._loadPersistedStates();
 
-            // Démarre le timer de publication régulière du statut LWT/volets
-            if (this.statusInterval) {
-                clearInterval(this.statusInterval);
-            }
-            this.statusInterval = setInterval(() => {
-                this.updateShutterStatus();
-            }, this.syncInterval); // Utilisation ici au lieu de 20000
-
-            // Publication des composants Home Assistant
-            if (this.haDiscoveryInterval) {
-                clearInterval(this.haDiscoveryInterval);
-            }
-            if (this.mqttClient && this.bridgeId) {
-                await this.publishHADiscoveryComponents(this.bridgeId);
-            }
-            this.haDiscoveryInterval = setInterval(() => {
-                if (this.mqttClient && this.bridgeId) {
-                    this.publishHADiscoveryComponents(this.bridgeId);
-                }
-            }, 6 * 60 * 60 * 1000); // Toutes les 6 heures
-
-            return this.updateShutterStatus()
-                .then(() => {
-                    logger.debug(`🔍 ${this.devices.size} l'état des volets Bubendorff découverts`);
-                    return true;
-                }).catch(err => {
-                    logger.error('Erreur lors de la mise à jour de l\'état des volets:', err);
-                    return false;
-                });
-        }).catch(err => {
-            logger.error('❌ Détails de l\'erreur API:', {
-                status: err.response?.status,
-                statusText: err.response?.statusText,
-                data: err.response?.data,
-                url: err.config?.url,
-                headers: err.config?.headers
-            });
-            logger.error('❌ Erreur lors de l\'initialisation des devices Netatmo:', err);
+            await this.startDiscoveryProcess();
+            return true;
+        } catch (error) {
+            logger.error('❌ Erreur lors de l\'initialisation des appareils iDiamant:', error);
             return false;
-        });
+        }
     }
 
-    async publishHADiscoveryComponents(bridgeId) {
+    async startDiscoveryProcess() {
+        // Publication des composants Home Assistant
+        await this._publishHADiscoveryComponents(this.bridgeId);
+
+        if (this.haDiscoveryInterval) {
+            clearInterval(this.haDiscoveryInterval);
+        }
+        this.haDiscoveryInterval = setInterval(() => {
+            this._publishHADiscoveryComponents(this.bridgeId);
+        }, 6 * 60 * 60 * 1000); // Toutes les 6 heures
+    }
+
+    async startShutterStatusUpdate() {
+        logger.info('🔄 Démarrage de la mise à jour des volets...');
+        // Démarre le timer de publication régulière du statut LWT/volets
+        await this._updateShutterStatus();
+
+        if (this.statusInterval) {
+            clearInterval(this.statusInterval);
+        }
+        this.statusInterval = setInterval(() => {
+            this._updateShutterStatus();
+        }, this.syncInterval); // Utilisation ici au lieu de 20000
+    }
+
+    async _publishHADiscoveryComponents(bridgeId) {
+        if (!this.config.HA_DISCOVERY) return;
         if (!this.mqttClient) {
             logger.warn('⚠️ Client MQTT non initialisé ou découverte Home Assistant désactivée');
             return;
         }
-        if (!this.config.HA_DISCOVERY) return;
+        if (!bridgeId) {
+            logger.warn('⚠️ bridgeId non défini, impossible de publier les composants Home Assistant');
+            return;
+        }
 
-        logger.info('📡 Publication des composants Home Assistant pour le pont Idéamant...');
+        logger.info('📡 Publication des composants Home Assistant pour le pont iDiamant...');
         this.HADiscoveryHelper.publishGatewayComponents(bridgeId)
         logger.info('📡 Publication des composants Home Assistant pour les volets...');
         this.devices.forEach(device => {
@@ -114,8 +112,11 @@ class IDiamantDevicesHandler {
         });
     }
 
-    async loadPersistedStates() {
-        if (!this.mqttClient) return;
+    async _loadPersistedStates() {
+        if (!this.mqttClient) {
+            logger.warn('⚠️ Client MQTT non initialisé, les états persistés ne seront pas chargés');
+            return;
+        }
 
         logger.info('🔄 Chargement des états persistés depuis MQTT...');
 
@@ -161,85 +162,68 @@ class IDiamantDevicesHandler {
         return this.devices.get(deviceId);
     }
 
-    async updateShutterStatus() {
+    async _updateShutterStatus() {
         const getHash = (stateObj) => {
             const stateStr = JSON.stringify(stateObj);
             const hash = crypto.createHash('sha1').update(stateStr).digest('hex');
             return hash;
         };
+        const response = await this.api.get(`/api/homestatus?home_id=${this.homeId}`);
 
-        if (!this.homeId) {
-            logger.error('homeId non initialisé, impossible de récupérer le statut des volets.');
-            return Promise.resolve(false);
-        }
-        return this.api.get(`/homestatus?home_id=${this.homeId}`)
-        .then(response => {
-            const modules = response.data.body?.home?.modules || [];
-            // Synchronisation de la liste des volets (NBS)
-            const nbsModules = modules.filter(module => module.type === 'NBS');
-            let devicesUpdated = false;
-
-            // Mise à jour des statuts
-            nbsModules.forEach(module => {
-                const device = this.devices.get(module.id);
-                const oldHash = getHash(device);
-                if (device) {
-                    device.reachable = module.reachable;
-                    device.last_seen = module.last_seen;
-                    if (this.persistedStates.has(module.id)) {
-                        const persistedState = this.persistedStates.get(module.id);
-                        device.state = persistedState.state || 'stopped';
-                        device.current_position = persistedState.position || 50;}
-                    else {
-                        device.state = 'stopped';
-                        device.current_position = 50;
-                    }
-                    
-                    if (oldHash !== getHash(device)) {
-                        devicesUpdated = true;
-                        this.devices.set(module.id, device);
-                    }
-                }
-            });
-            // Mise à jour du statut du bridge
-            const bridgeModule = modules.find(module => module.type === 'NBG' && module.id === this.bridgeId);
-            if (bridgeModule && bridgeModule.reachable !== this.bridgeReachable) {
-                this.bridgeReachable = bridgeModule.reachable;
-                devicesUpdated = true;
-            }
-
-            if (devicesUpdated) {
-                logger.info('✅ Statuts des volets synchronisés et mis à jour (diff détectée, publication MQTT)');
-                if (this.mqttClient) {
-                    this.publishShutterStatusToMqtt();
-                }
-            } else {
-                logger.debug('Aucun changement d\'état détecté, pas de publication MQTT');
-            }
-            return true;
-        }).catch(err => {
-            logger.error('❌ Erreur lors de la récupération du statut des volets:', err);
+        if (response.status !== 200 || !response.data) {
+            logger.error('❌ Erreur lors de la récupération du statut des devices');
             return false;
+        }
+
+        const modules = response.data.body?.home?.modules || [];
+        // Synchronisation de la liste des volets (NBS)
+        const nbsModules = modules.filter(module => module.type === 'NBS');
+        let devicesUpdated = false;
+
+        // Mise à jour des statuts
+        nbsModules.forEach(module => {
+            const device = this.devices.get(module.id);
+            const oldHash = getHash(device);
+            if (device) {
+                device.reachable = module.reachable;
+                device.last_seen = module.last_seen;
+                if (this.persistedStates.has(module.id)) {
+                    const persistedState = this.persistedStates.get(module.id);
+                    device.state = persistedState.state || 'stopped';
+                    device.current_position = persistedState.position || 50;
+                }
+                else {
+                    device.state = 'stopped';
+                    device.current_position = 50;
+                }
+
+                if (oldHash !== getHash(device)) {
+                    devicesUpdated = true;
+                    this.devices.set(module.id, device);
+                }
+            }
         });
+        // Mise à jour du statut du bridge
+        const bridgeModule = modules.find(module => module.type === 'NBG' && module.id === this.bridgeId);
+        if (bridgeModule && bridgeModule.reachable !== this.bridgeReachable) {
+            this.bridgeReachable = bridgeModule.reachable;
+            devicesUpdated = true;
+        }
+
+        if (devicesUpdated) {
+            logger.info('✅ Statuts des volets synchronisés et mis à jour (diff détectée, publication MQTT)');
+            this._publishShutterStatusToMqtt();
+        } else {
+            logger.debug('Aucun changement d\'état détecté, pas de publication MQTT');
+        }
+        return true;
     }
 
-    // startTokenAutoRefresh(force = false) {
-    //     if (this.tokenData && this.tokenData.refresh_token && this.tokenData.expires_in && this.tokenData.timestamp) {
-    //         this.authHelper.startTokenAutoRefresh(this.tokenData, force);
-    //         logger.info('🔄 Redémarrage du rafraîchissement automatique du token Netatmo...');
-    //     }
-    // }
-
-    // tokenRefreshHandler(newTokenData) {
-    //     this.tokenData = newTokenData;
-    //     logger.info('🔄 Token Netatmo mis à jour dans devicesHandler via callback.');
-    //     if (this.mqttClient) {
-    //         this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-    //         this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-    //     }
-    // }
-
-    publishShutterStatusToMqtt() {
+    _publishShutterStatusToMqtt() {
+        if (!this.mqttClient) {
+            logger.warn('⚠️ Client MQTT non initialisé, impossible de publier les statuts des volets');
+            return;
+        }
         const publishAsync = (topic, message, options) => {
             this.mqttClient.publish(topic, message, options, (err) => {
                 if (err) {
@@ -273,7 +257,7 @@ class IDiamantDevicesHandler {
             device.position = newPosition;
             this.devices.set(deviceId, device);
             // Mettre à jour également l'état persisté
-            this.persistedStates.set(deviceId, {state: newState, position: newPosition});
+            this.persistedStates.set(deviceId, { state: newState, position: newPosition });
             logger.debug(`État du device ${deviceId} mis à jour: ${newState}`);
         }
     }

@@ -3,13 +3,13 @@ const config = require('./config/config');
 const MQTTClient = require('./services/mqtt-client');
 const NetatmoAuthHelper = require('./token/auth-helper');
 const IDiamantDevicesHandler = require('./services/idiamant-devices');
+const axios= require('axios');
 
 class App {
     constructor() {
         this.mqttClient = null;
         this.shutterController = null;
         this.isRunning = false;
-        this.apiBase = 'https://api.netatmo.com';
     }
 
     async start() {
@@ -25,31 +25,44 @@ class App {
 
             // Gestion du token via auth-helper
             const authHelper = new NetatmoAuthHelper(this.mqttClient);
-            const tokenData = await authHelper.getTokenData();
-
-            // if (!authHelper.isTokenValid(tokenData)) {
+            // await authHelper.waitForInitialToken(); // attend le premier token reçu
+            
+            // if (!authHelper.tokenData) {
             //     logger.error('❌ Token Netatmo absent ou expiré. Veuillez relancer l\'authentification avec : make auth-url');
             //     process.exit(1);
+            // } else {
+            //     logger.info('✅ Token Netatmo valide. OK');
             // }
-            logger.info('✅ Token Netatmo valide. OK');
+
+            authHelper.setupPermanentTokenListener();
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Attente de 2 secondes
+
+            while (!authHelper.tokenData) {
+                logger.info('🔄 En attente du token Netatmo...');
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Attente de 10 secondes
+            }
             authHelper.startTokenAutoRefresh();
-            
-            const axios= require('axios');
+
+            const token = authHelper.tokenData;
+
             const api = axios.create({
-                baseURL: `${config.IDIAMANT_API_URL}/api`,
+                baseURL: `${config.IDIAMANT_API_URL}`,
                 headers: {
-                    'Authorization': `Bearer ${tokenData.access_token}`,
+                    'Authorization': `Bearer ${token.access_token}`,
                     'Content-Type': 'application/json'
                 }
             });
-            logger.debug(`🔍 Token utilisé: ${tokenData.access_token.substring(0, 20)}...`);
-            logger.debug(`🔍 API Initialisée: ${this.apiBase}`);
 
-            const devicesHandler = new IDiamantDevicesHandler(config, this.mqttClient,api);
+            logger.debug(`🔍 Token utilisé: ${token.access_token.substring(0, 20)}...`);
+            logger.debug(`🔍 API Initialisée: ${config.IDIAMANT_API_URL}`);
+
+            const devicesHandler = new IDiamantDevicesHandler(config, this.mqttClient, api, token.homeId);
             logger.info('✅ Initialisation des appareils Netatmo...');
             devicesHandler.initialize().then(success => {
                 if (success) {
                     logger.info('✅ Appareils initialisés avec succès');
+
+                    devicesHandler.startShutterStatusUpdate();
 
                     // Instanciation et démarrage du contrôleur de volets
                     const ShutterController = require('./controllers/shutter-controller');

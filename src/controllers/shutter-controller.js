@@ -32,7 +32,6 @@ class ShutterController {
     }
 
     listenCommands() {
-
         // Abonnement au topic de commande
 
         let topic = `${this.config.MQTT_TOPIC_PREFIX}/+/cmd`;
@@ -79,7 +78,10 @@ class ShutterController {
         }
 
         // 1. Envoi commande API Netatmo
-        await this.sendNetatmoCommand(deviceId, cmd);
+        if (!await this._sendNetatmoCommand(deviceId, cmd)) {
+            logger.error(`❌ Échec de l'envoi de la commande ${cmd} pour ${deviceId}`);
+            return;
+        }
 
         // 2. Gestion de l'état intermédiaire et publication
         if (cmd === 'stop') {
@@ -112,7 +114,7 @@ class ShutterController {
         }
     }
 
-    async sendNetatmoCommand(deviceId, cmd) {
+    async _sendNetatmoCommand(deviceId, cmd) {
         const payload = {
             home: {
                 id: this.devicesHandler.homeId,
@@ -121,16 +123,17 @@ class ShutterController {
                         id: deviceId,
                         target_position: CMD_MAP[cmd],
                         bridge: this.devicesHandler.bridgeId
-                    }
-                ]
+                    }]
             }
         };
         try {
             logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
-            await this.api.post("/setstate", payload);
+            await this.api.post("/api/setstate", payload);
             logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
+            return true;
         } catch (err) {
             logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);
+            return false;
         }
     }
 
