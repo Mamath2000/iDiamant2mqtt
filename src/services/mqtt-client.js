@@ -27,7 +27,7 @@ class MQTTClient {
                     clientId: this.config.MQTT_CLIENT_ID,
                     clean: true,
                     connectTimeout: 30000,
-                    keepalive: parseInt(this.config.MQTT_KEEPALIVE) || 60,  // Ajout ici
+                    keepalive: parseInt(this.config.MQTT_KEEPALIVE) || 60, 
                     reconnectPeriod: 5000,
                     will: {
                         topic: `${this.config.MQTT_TOPIC_PREFIX}/lwt`,
