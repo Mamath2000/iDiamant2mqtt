@@ -5,8 +5,8 @@ const haDiscoveryHelper = require('./ha-discovery-helper');
 const { translate, formatDate } = require('../utils/utils');
 
 class IDiamantDevicesHandler {
-    constructor(config, mqttClient, api, homeId) {
-        this.api = api;
+    constructor(config, mqttClient, apiHelper, homeId) {
+        this.apiHelper = apiHelper;
         this.homeId = homeId;
         this.bridgeId = null;
         this.devices = new Map();
@@ -25,7 +25,7 @@ class IDiamantDevicesHandler {
     async initialize() {
         logger.info('🔄 Initialisation des appareils iDiamant...');
         // Vérification de la configuration
-        const response = await this.api.get("/api/homesdata")
+        const response = await this.apiHelper.get("/homesdata");
         if (response.status !== 200) {
             logger.error('❌ Détails de l\'erreur API:', {
                 status: response.error?.status,
@@ -168,7 +168,7 @@ class IDiamantDevicesHandler {
             const hash = crypto.createHash('sha1').update(stateStr).digest('hex');
             return hash;
         };
-        const response = await this.api.get(`/api/homestatus?home_id=${this.homeId}`);
+        const response = await this.apiHelper.get(`/homestatus?home_id=${this.homeId}`);
 
         if (response.status !== 200 || !response.data) {
             logger.error('❌ Erreur lors de la récupération du statut des devices');

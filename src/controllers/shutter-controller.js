@@ -1,4 +1,4 @@
-const axios = require('axios');
+// const axios = require('axios');
 const logger = require('../utils/logger');
 const { translate, getTransition } = require('../utils/utils');
 
@@ -10,8 +10,8 @@ const CMD_MAP = {
 };
 
 class ShutterController {
-    constructor(config, mqttClient, api, authHelper, devicesHandler) {
-        this.api = api;
+    constructor(config, mqttClient, apiHelper, authHelper, devicesHandler) {
+        this.apiHelper = apiHelper;
         this.authHelper = authHelper;
         this.devicesHandler = devicesHandler;
         this.mqttClient = mqttClient;
@@ -128,7 +128,7 @@ class ShutterController {
         };
         try {
             logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
-            await this.api.post("/api/setstate", payload);
+            await this.apiHelper.post("/setstate", payload);
             logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
             return true;
         } catch (err) {

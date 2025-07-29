@@ -5,62 +5,20 @@ const qs = require('querystring');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const { formatDate } = require('../utils/utils');
+const ApiHelper = require('../utils/api-helper'); 
 
 class NetatmoAuthHelper {
-    constructor(mqttClient) {
+    constructor(mqttClient, appApiHelper) {
         // Chemin absolu depuis la racine du projet
         this.bridgeTopic = `${config.MQTT_TOPIC_PREFIX}/bridge`;
         this.mqttClient = mqttClient;
         this.tokenData = null; // Stocke le token récupéré
         this.refreshTimer = null; // Timer pour le rafraîchissement automatique
+        this.tokenApiHelper = new ApiHelper(`${config.IDIAMANT_API_URL}`, 5000); // Timeout de 5 secondes
+        this.appApiHelper = appApiHelper;
 
         // On n'abonne pas tout de suite le handler permanent, voir waitForInitialToken
     }
-    // /**
-    //  * Attend le premier message retain sur le topic token, puis installe le handler permanent.
-    //  * Usage : await instance.waitForInitialToken();
-    //  */
-    // async waitForInitialToken(timeoutMs = 5 * 60 * 1000) {
-    //     return new Promise((resolve, reject) => {
-    //         const topic = `${this.bridgeTopic}/token`;
-    //         let isResolved = false; // Flag pour éviter les doubles appels
-
-    //         const tempHandler = (deviceId, message) => {
-    //             if (deviceId === "bridge" && !isResolved) {
-    //                 isResolved = true;
-    //                 logger.debug(`🔍 Message reçu sur ${topic}: ${message.toString()}`);
-
-    //                 this.mqttClient.setTokenHandler(null);
-    //                 this.mqttClient.unsubscribe(topic);
-
-    //                 try {
-    //                     const token = JSON.parse(message.toString());
-    //                     if (this.checkTokenValidity(token)) {
-    //                         resolve(token);
-    //                     } else {
-    //                         reject(new Error("Token invalide"));
-    //                     }
-    //                 } catch (err) {
-    //                     reject(err);
-    //                 }
-    //             }
-    //         };
-
-    //         // Installe le handler temporaire
-    //         this.mqttClient.setTokenHandler(tempHandler);
-    //         this.mqttClient.subscribe(topic);
-
-    //         // Timeout
-    //         setTimeout(() => {
-    //             if (!isResolved) {
-    //                 isResolved = true;
-    //                 this.mqttClient.setTokenHandler(null); // Nettoie le handler temporaire
-    //                 this.mqttClient.unsubscribe(topic);
-    //                 reject(new Error("Timeout: aucun token reçu"));
-    //             }
-    //         }, timeoutMs);
-    //     });
-    // }
 
     async checkTokenValidity(token) {
         logger.debug(`🔍 Token reçu via MQTT: ${JSON.stringify(token)}`);
@@ -79,17 +37,17 @@ class NetatmoAuthHelper {
         logger.info('✅ Token Netatmo valide reçu via MQTT');
 
         try {
-            const options = {
-                method: 'GET',
-                url: `${config.IDIAMANT_API_URL}/api/homesdata`,
-                headers: {
-                    'Authorization': `Bearer ${token.access_token}`,
-                    'Content-Type': 'application/json'
-                }
-            };
-            
-            const response = await axios(options); // ✅ AWAIT
-            
+            // const options = {
+            //     method: 'GET',
+            //     url: `${config.IDIAMANT_API_URL}/api/homesdata`,
+            //     headers: {
+            //         'Authorization': `Bearer ${token.access_token}`,
+            //         'Content-Type': 'application/json'
+            //     }
+            // };
+            // const response = await axios(options); // ✅ AWAIT
+            this.appApiHelper.setAccessToken(token.access_token);
+            const response = await this.appApiHelper.get('/homesdata'); // ✅ AWAIT
             if (response.status === 200) {
                 const homeData = response.data.body;
                 if (homeData && homeData.homes[0]?.id) {
@@ -163,45 +121,71 @@ class NetatmoAuthHelper {
             this.refreshTimer = setTimeout(() => this.refreshToken(), delayMs);
         }
     }
-    refreshToken() {
+
+    async refreshToken() {
         try {
             logger.info('🔄 Rafraîchissement du token Netatmo...');
-            let options = {
-                method: 'POST',
-                url: `${config.IDIAMANT_API_URL}/oauth2/token`,
-                data: qs.stringify({
-                    grant_type: 'refresh_token',
-                    refresh_token: this.tokenData.refresh_token,
-                    client_id: config.IDIAMANT_CLIENT_ID,
-                    client_secret: config.IDIAMANT_CLIENT_SECRET
-                }),
+            // const options = {
+            //     method: 'POST',
+            //     url: `${config.IDIAMANT_API_URL}/oauth2/token`,
+            //     data: qs.stringify({
+            //         grant_type: 'refresh_token',
+            //         refresh_token: this.tokenData.refresh_token,
+            //         client_id: config.IDIAMANT_CLIENT_ID,
+            //         client_secret: config.IDIAMANT_CLIENT_SECRET
+            //     }),
+            //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            // };
+
+            // const response = await axios(options);
+            const data = qs.stringify({
+                grant_type: 'refresh_token',
+                refresh_token: this.tokenData.refresh_token,
+                client_id: config.IDIAMANT_CLIENT_ID,
+                client_secret: config.IDIAMANT_CLIENT_SECRET
+            });
+            const response = await this.tokenApiHelper.post('/oauth2/token', data, {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-            };
-            axios(options)
-                .then((response) => {
-                    if (response.status === 200) {
-                        const newToken = response.data;
-                        newToken.timestamp = Date.now();
+            }); 
 
-                        // Publie le token sur MQTT
-                        // this.tokenData = newToken; // Met à jour le tokenData
-                        this.mqttClient.publish(`${this.bridgeTopic}/token`, JSON.stringify(newToken), { retain: true });
-                        logger.info('✅ Token Netatmo rafraîchi avec succès');
+            if (response.status === 200) {
 
-                        // Relance le refresh automatique avec le nouveau token pour garantir la récursivité
-                        this.startTokenAutoRefresh();
-                    }
-                })
-                .catch((error) => {
-                    logger.error('❌ Échec du rafraîchissement du token Netatmo:', error);
-                    setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
-                });
-        } catch (err) {
+                const newToken = response.data;
+                newToken.timestamp = Date.now();
+
+                // Publie le token sur MQTT
+                this.mqttClient.publish(`${this.bridgeTopic}/token`, JSON.stringify(newToken), { retain: true });
+                logger.info('✅ Token Netatmo rafraîchi avec succès');
+
+                // Relance le refresh automatique avec le nouveau token pour garantir la récursivité
+                this.startTokenAutoRefresh();
+            } else {
+                logger.error('❌ Échec du rafraîchissement du token Netatmo:', response.data);
+                if (this.refreshTimer) {
+                    clearTimeout(this.refreshTimer);
+                }
+                // Réessaie après un délai
+                logger.warn('🔄 Réessaie du rafraîchissement du token dans 30 secondes');
+                this.refreshTimer = setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
+            }
+        } 
+        catch (err) {
             logger.error('❌ Échec du rafraîchissement du token Netatmo:', err);
-            setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
+                if (this.refreshTimer) {
+                    clearTimeout(this.refreshTimer);
+                }
+                // Réessaie après un délai
+                logger.warn('🔄 Réessaie du rafraîchissement du token dans 30 secondes');
+                this.refreshTimer = setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
         }
     }
 
+    stop() {
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
+        }
+    }
 }
 
 module.exports = NetatmoAuthHelper;
