@@ -4,22 +4,29 @@ const NetatmoAuthHelper = require('../token/auth-helper');
 const haDiscoveryHelper = require('./ha-discovery-helper');
 const { translate, formatDate } = require('../utils/utils');
 
+
+
 class IDiamantDevicesHandler {
-    constructor(config, mqttClient, apiHelper, homeId) {
+    constructor(config, mqttClient, apiHelper) {
         this.apiHelper = apiHelper;
-        this.homeId = homeId;
+        this.homeId = null;
         this.bridgeId = null;
         this.devices = new Map();
         this.persistedStates = new Map(); // États récupérés depuis MQTT
-        // this.apiBase = 'https://api.netatmo.com';
         this.mqttClient = mqttClient;
         this.config = config;
         this.statusInterval = null;
         this.haDiscoveryInterval = null;
         this.HADiscoveryHelper = new haDiscoveryHelper(this.mqttClient, this.config);
         this.authHelper = new NetatmoAuthHelper();
-        // this.authHelper.setTokenRefreshHandler(this.tokenRefreshHandler.bind(this));
         this.syncInterval = parseInt(config.SYNC_INTERVAL) || 30000;  // 30 secondes par défaut
+        this.CMD_MAP = {
+            open: 100,
+            close: 0,
+            half_open: -2,
+            stop: -1
+        };
+
     }
 
     async initialize() {
@@ -39,6 +46,7 @@ class IDiamantDevicesHandler {
         }
         try {
             const homes = response.data.body.homes;
+            this.homeId = homes[0].id;
             this.bridgeId = homes[0].modules[0].id;
             logger.debug(`🏠 home_id: ${this.homeId}`);
             logger.debug(`🔗 bridge_id: ${this.bridgeId}`);
@@ -162,6 +170,34 @@ class IDiamantDevicesHandler {
         return this.devices.get(deviceId);
     }
 
+    async sendNetatmoCommand(deviceId, cmd) {
+        // Vérifie que le deviceId est valide
+        if (!this.devices.has(deviceId)) {
+            logger.error(`❌ Device ID ${deviceId} inconnu, impossible d'envoyer la commande`);
+            return false;
+        }
+        const payload = {
+            home: {
+                id: this.homeId,
+                modules: [
+                    {
+                        id: deviceId,
+                        target_position: this.CMD_MAP[cmd],
+                        bridge: this.bridgeId
+                    }]
+            }
+        };
+        try {
+            logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
+            await this.apiHelper.post("/setstate", payload);
+            logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
+            return true;
+        } catch (err) {
+            logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);
+            return false;
+        }
+    }
+
     async _updateShutterStatus() {
         const getHash = (stateObj) => {
             const stateStr = JSON.stringify(stateObj);
@@ -236,8 +272,6 @@ class IDiamantDevicesHandler {
 
         // Publication des états des volets (send and forget)
         publishAsync(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, (this.bridgeReachable ? 'online' : 'offline'), { retain: true });
-        // this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_date`, formatDate(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
-        // this.mqttClient.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/expire_at_ts`, String(this.tokenData.timestamp + (this.tokenData.expires_in * 1000)), { retain: true });
 
         this.devices.forEach(device => {
             const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${device.id}`;
@@ -260,6 +294,10 @@ class IDiamantDevicesHandler {
             this.persistedStates.set(deviceId, { state: newState, position: newPosition });
             logger.debug(`État du device ${deviceId} mis à jour: ${newState}`);
         }
+    }
+
+    isCommandValid(command) {
+        return Object.prototype.hasOwnProperty.call(this.CMD_MAP, command);
     }
 
     stop() {

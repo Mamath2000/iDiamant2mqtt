@@ -100,16 +100,31 @@ class MQTTClient {
         // Traitement des messages de commande pour /set et /cmd
         const [, deviceId, last] = topic.split('/');
 
-        if (last === 'cmd' && deviceId) {
+        if (last === 'cmd' && deviceId== 'bridge'   ) {
+            // Commande spéciale pour le bridge
+            this.handleBridgeCommand(deviceId, topic, messageStr);
+
+        } else if (last === 'cmd' && deviceId) {
+            // Commande pour un appareil spécifique
             this.handleDeviceCommand(deviceId, topic, messageStr);
+
         } else if (last === 'state' && deviceId) {
             // Message d'état récupéré lors de la souscription (état persisté)
             this.handleStateMessage(deviceId, messageStr, packet);
-        } else if (last === 'token' && deviceId) {
+
+        } else if (last === 'token' && deviceId === "bridge") {
             // Message de token récupéré lors de la souscription (état persisté)
             this.handleTokenMessage(deviceId, messageStr, packet);  
+
         } else {
             logger.debug(`Message MQTT ignoré sur ${topic}`);
+
+        }
+    }
+    handleBridgeCommand(deviceId, topic, message) {
+        // Émission d'un événement pour que le contrôleur puisse traiter la commande
+        if (this.bridgeCommandHandler) {
+            this.bridgeCommandHandler(deviceId, topic, message);
         }
     }
 
@@ -122,16 +137,20 @@ class MQTTClient {
 
     handleStateMessage(deviceId, state, packet) {
         // Traitement des messages d'état récupérés (pour la persistance)
-        if (this.stateHandler && packet.retain) {
+        if (this.stateHandler) {
             this.stateHandler(deviceId, state);
         }
     }
 
     handleTokenMessage(deviceId, state, packet) {
         // Traitement des messages d'état récupérés (pour la persistance)
-        if (this.tokenHandler && packet.retain) {
+        if (this.tokenHandler) {
             this.tokenHandler(deviceId, state);
         }
+    }
+
+    setBridgeCommandHandler(handler) {
+        this.bridgeCommandHandler = handler;
     }
 
     setCommandHandler(handler) {
@@ -141,7 +160,6 @@ class MQTTClient {
     setStateHandler(handler) {
         this.stateHandler = handler;
     }
-
 
     setTokenHandler(handler) {
         this.tokenHandler = handler;

@@ -1,18 +1,15 @@
-// const axios = require('axios');
 const logger = require('../utils/logger');
 const { translate, getTransition } = require('../utils/utils');
 
-const CMD_MAP = {
-    open: 100,
-    close: 0,
-    half_open: -2,
-    stop: -1
-};
+// const CMD_MAP = {
+//     open: 100,
+//     close: 0,
+//     half_open: -2,
+//     stop: -1
+// };
 
 class ShutterController {
-    constructor(config, mqttClient, apiHelper, authHelper, devicesHandler) {
-        this.apiHelper = apiHelper;
-        this.authHelper = authHelper;
+    constructor(config, mqttClient, devicesHandler) {
         this.devicesHandler = devicesHandler;
         this.mqttClient = mqttClient;
         this.config = config;
@@ -43,20 +40,14 @@ class ShutterController {
             logger.info(`Abonnement réussi au topic de commande: ${topic}`);
         });
         this.mqttClient.setCommandHandler(async (deviceId, topic, message) => {
-            if (deviceId === 'bridge') {
-                logger.info(`Commande reçue pour le bridge : ${message}.`);
-                if (message === 'refreshToken') {
-                    await this.authHelper.startTokenAutoRefresh(true);
-                }
-                return;
-            } else if (parseInt(deviceId) > 0 && Object.prototype.hasOwnProperty.call(CMD_MAP, message)) {
+            if (parseInt(deviceId) > 0 && this.devicesHandler.isCommandValid(message)) {
                 try {
                     await this.handleCommand(deviceId, message);
                 } catch (err) {
                     logger.error(`Erreur lors du traitement de la commande ${message} pour ${deviceId}:`, err);
                 }
             } else {
-                logger.warn(`Commande reçue pour un device inconnu: ${deviceId}`);
+                logger.warn(`Commande reçue: device ${deviceId}, ou commande ${message} invalide.`);
             }
         });
     }
@@ -78,7 +69,7 @@ class ShutterController {
         }
 
         // 1. Envoi commande API Netatmo
-        if (!await this._sendNetatmoCommand(deviceId, cmd)) {
+        if (!await this.devicesHandler.sendNetatmoCommand(deviceId, cmd)) {
             logger.error(`❌ Échec de l'envoi de la commande ${cmd} pour ${deviceId}`);
             return;
         }
@@ -114,33 +105,33 @@ class ShutterController {
         }
     }
 
-    async _sendNetatmoCommand(deviceId, cmd) {
-        const payload = {
-            home: {
-                id: this.devicesHandler.homeId,
-                modules: [
-                    {
-                        id: deviceId,
-                        target_position: CMD_MAP[cmd],
-                        bridge: this.devicesHandler.bridgeId
-                    }]
-            }
-        };
-        try {
-            logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
-            await this.apiHelper.post("/setstate", payload);
-            logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
-            return true;
-        } catch (err) {
-            logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);
-            return false;
-        }
-    }
+    // async _sendNetatmoCommand(deviceId, cmd) {
+    //     const payload = {
+    //         home: {
+    //             id: this.devicesHandler.homeId,
+    //             modules: [
+    //                 {
+    //                     id: deviceId,
+    //                     target_position: CMD_MAP[cmd],
+    //                     bridge: this.devicesHandler.bridgeId
+    //                 }]
+    //         }
+    //     };
+    //     try {
+    //         logger.debug(`Envoi commande Netatmo pour ${deviceId}: ${JSON.stringify(payload)}`);
+    //         await this.apiHelper.post("/setstate", payload);
+    //         logger.info(`Commande Netatmo envoyée pour ${deviceId}: ${cmd}`);
+    //         return true;
+    //     } catch (err) {
+    //         logger.error(`Erreur commande Netatmo pour ${deviceId}:`, err);
+    //         return false;
+    //     }
+    // }
 
     publishState(deviceId, state, current_position) {
         const baseTopic = `${this.config.MQTT_TOPIC_PREFIX}/${deviceId}`;
         // Publications en mode "fire and forget" - pas d'await
-        this.mqttClient.publish(`${baseTopic}/state`, JSON.stringify({state: state, position: current_position}), { retain: true });
+        this.mqttClient.publish(`${baseTopic}/state`, JSON.stringify({ state: state, position: current_position }), { retain: true });
         this.mqttClient.publish(`${baseTopic}/state_fr`, translate(state), { retain: true });
         // this.mqttClient.publish(`${baseTopic}/current_position`, String(current_position), { retain: true });
         this.mqttClient.publish(`${baseTopic}/cover_state`, state == 'half_open' ? 'stopped' : state, { retain: true });

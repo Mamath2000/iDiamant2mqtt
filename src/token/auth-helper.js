@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// const MQTTClient = require('../services/mqtt-client');
-const axios = require('axios');
 const qs = require('querystring');
 const logger = require('../utils/logger');
 const config = require('../config/config');
@@ -16,8 +14,6 @@ class NetatmoAuthHelper {
         this.refreshTimer = null; // Timer pour le rafraîchissement automatique
         this.tokenApiHelper = new ApiHelper(`${config.IDIAMANT_API_URL}`, 5000); // Timeout de 5 secondes
         this.appApiHelper = appApiHelper;
-
-        // On n'abonne pas tout de suite le handler permanent, voir waitForInitialToken
     }
 
     async checkTokenValidity(token) {
@@ -37,15 +33,6 @@ class NetatmoAuthHelper {
         logger.info('✅ Token Netatmo valide reçu via MQTT');
 
         try {
-            // const options = {
-            //     method: 'GET',
-            //     url: `${config.IDIAMANT_API_URL}/api/homesdata`,
-            //     headers: {
-            //         'Authorization': `Bearer ${token.access_token}`,
-            //         'Content-Type': 'application/json'
-            //     }
-            // };
-            // const response = await axios(options); // ✅ AWAIT
             this.appApiHelper.setAccessToken(token.access_token);
             const response = await this.appApiHelper.get('/homesdata'); // ✅ AWAIT
             if (response.status === 200) {
@@ -91,16 +78,13 @@ class NetatmoAuthHelper {
         this.mqttClient.subscribe(`${this.bridgeTopic}/token`);
         logger.info('🔄 Handler permanent pour les mises à jour de token installé');
     }
-    // isTokenValid(newTokenData) {
-    //     if (!newTokenData || !newTokenData.timestamp || !newTokenData.expires_in) return false;
-    //     const nowMs = Date.now();
-    //     const expireMs = newTokenData.timestamp + (newTokenData.expires_in * 1000);
-    //     const expireDate = new Date(expireMs);
-    //     logger.info(`Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
-    //     this.tokenData = newTokenData; // Met à jour le tokenData
-    //     // publie les infos du token sur MQTT
-    //     return expireMs > nowMs;
-    // }
+
+    refreshTokenCommandHandler(deviceId, topic, message) {
+        if (deviceId === 'bridge' && message === 'refreshToken') {
+            logger.info('🔄 Commande de rafraîchissement du token reçue via MQTT');
+            this.startTokenAutoRefresh(true);
+        }
+    }
 
     startTokenAutoRefresh(force = false) {
         // Nettoie l'ancien timer s'il existe
@@ -125,19 +109,6 @@ class NetatmoAuthHelper {
     async refreshToken() {
         try {
             logger.info('🔄 Rafraîchissement du token Netatmo...');
-            // const options = {
-            //     method: 'POST',
-            //     url: `${config.IDIAMANT_API_URL}/oauth2/token`,
-            //     data: qs.stringify({
-            //         grant_type: 'refresh_token',
-            //         refresh_token: this.tokenData.refresh_token,
-            //         client_id: config.IDIAMANT_CLIENT_ID,
-            //         client_secret: config.IDIAMANT_CLIENT_SECRET
-            //     }),
-            //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-            // };
-
-            // const response = await axios(options);
             const data = qs.stringify({
                 grant_type: 'refresh_token',
                 refresh_token: this.tokenData.refresh_token,
