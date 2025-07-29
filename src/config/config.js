@@ -31,20 +31,20 @@ const config = {
   SYNC_INTERVAL: parseInt(process.env.SYNC_INTERVAL) || 30000, // 30 secondes
 };
 
-// Validation des configurations critiques
-const logger = require('../utils/logger');
-if (config.MODE_ENV === 'production') {
-  // En production, on s'assure que les champs critiques sont définis
-  const requiredFields = [
-    'IDIAMANT_CLIENT_ID',
-    'IDIAMANT_CLIENT_SECRET'
-  ];
-  const missingFields = requiredFields.filter(field => !config[field]);
-  if (missingFields.length > 0) {
-    logger.error(`Configuration manquante en production: ${missingFields.join(', ')}`);
-    process.exit(1);
-  }
-  logger.info('✅ Configuration validée pour la production');
-}
+// ✅ Auto-ajustement si debugger détecté
+const isDebugging = process.execArgv.some(arg => 
+    arg.includes('--inspect') || 
+    arg.includes('--debug') || 
+    arg.includes('--debug-brk')
+) || !!process.debugPort;
+
+if (isDebugging) {
+    console.log('🐛 Mode debugger détecté - ajustements automatiques :');
+    console.log('  - LOG_LEVEL: debug');
+    console.log('  - MQTT_KEEPALIVE: 900 (15 min)');
+    
+    config.LOG_LEVEL = 'debug';
+    config.MQTT_KEEPALIVE = 900; // 15 minutes
+}    
 
 module.exports = config;
