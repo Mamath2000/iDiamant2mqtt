@@ -64,7 +64,7 @@ class MQTTClient {
 
                 this.client.on('close', () => {
                     this.isConnected = false;
-                    logger.warn('⚠️ Connexion MQTT fermée');
+                    logger.info('⚠️ Connexion MQTT fermée');
                     // Log détaillé pour diagnostiquer
                     logger.debug('Détails fermeture MQTT - subscriptions actives:', Array.from(this.subscriptions.keys()));
                 });
