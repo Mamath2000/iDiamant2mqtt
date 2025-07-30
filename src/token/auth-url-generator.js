@@ -6,6 +6,10 @@ const logger = require('../utils/logger');
 const path = require('path');
 const NetatmoAuthServer = require('./auth-server');
 
+// Force le niveau de log ici (info ou debug)
+logger.level = (!['info', 'debug'].includes(process.env.AUTH_LOG_LEVEL)) ? 'info' : process.env.AUTH_LOG_LEVEL; // ou 'debug' selon ton besoin
+logger.info(`Niveau de log pour l'authentification : ${logger.level}`);
+
 /**
  * Générateur d'URL d'autorisation OAuth2 pour Netatmo
  * Basé sur le processus Node-RED fourni
@@ -50,6 +54,7 @@ class NetatmoAuthUrlGenerator {
     //   process.exit(1);
     // }
 
+    
     const auth = this.generateAuthUrl();
 
     logger.info('Ouvrez cette URL dans votre navigateur pour autoriser l\'application :');

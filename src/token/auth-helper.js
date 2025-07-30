@@ -99,7 +99,7 @@ class NetatmoAuthHelper {
             // expire_in = durée de vie en secondes depuis le timestamp
             const expireMs = this.tokenData.timestamp + (this.tokenData.expires_in * 1000);
             const nowMs = Date.now();
-            let delayMs = expireMs - nowMs - (5 * 60 * 1000); // rafraîchir 5 min avant expiration
+            let delayMs = expireMs - nowMs - (30 * 60 * 1000); // rafraîchir 30 min avant expiration
             if (delayMs < 1000) delayMs = 1000;
             logger.debug(`Le token sera rafraîchi dans ${Math.round(delayMs / 1000)} secondes.`);
             this.refreshTimer = setTimeout(() => this.refreshToken(), delayMs);
