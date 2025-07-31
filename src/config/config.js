@@ -28,6 +28,9 @@ const config = {
 
   // Configuration de l'application
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  APP_LOG_LEVEL: process.env.APP_LOG_LEVEL || 'debug', // Niveau de log de pour le fichier de log (info, warn, error, debug)
+  AUTH_LOG_LEVEL: process.env.AUTH_LOG_LEVEL || 'debug',
+  MQTT_LOG_LEVEL: process.env.MQTT_LOG_LEVEL || 'info',
   SYNC_INTERVAL: parseInt(process.env.SYNC_INTERVAL) || 30000, // 30 secondes
 };
 
