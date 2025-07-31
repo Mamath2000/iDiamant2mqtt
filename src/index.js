@@ -57,30 +57,29 @@ class App {
 
             this.devicesHandler = new IDiamantDevicesHandler(this.config, this.mqttClient, this.apiHelper);
             logger.info('✅ Initialisation des appareils Netatmo...');
+            const success = await this.devicesHandler.initialize();
 
-            this.devicesHandler.initialize().then(success => {
-                if (success) {
-                    logger.info('✅ Appareils initialisés avec succès');
+            if (success) {
+                logger.info('✅ Appareils initialisés avec succès');
 
-                    this.devicesHandler.startShutterStatusUpdate();
-                    this.mqttClient.setBridgeCommandHandler((deviceId, topic, message) => {
-                        this.authHelper.refreshTokenCommandHandler(deviceId, topic, message);
-                    });
+                this.devicesHandler.startShutterStatusUpdate();
+                this.mqttClient.setBridgeCommandHandler((deviceId, topic, message) => {
+                    this.authHelper.refreshTokenCommandHandler(deviceId, topic, message);
+                });
 
-                    // Instanciation et démarrage du contrôleur de volets
-                    this.shutterController = new ShutterController(this.config, this.mqttClient, this.devicesHandler);
+                // Instanciation et démarrage du contrôleur de volets
+                this.shutterController = new ShutterController(this.config, this.mqttClient, this.devicesHandler);
 
-                    this.shutterController.checkDevices();
-                    this.shutterController.listenCommands();
+                this.shutterController.checkDevices();
+                this.shutterController.listenCommands();
 
-                    this.healthMonitor = new HealthMonitor(this);
-                    this.healthMonitor.start();
-                    logger.info('🏥 Health monitoring démarré');
+                this.healthMonitor = new HealthMonitor(this);
+                this.healthMonitor.start();
+                logger.info('🏥 Health monitoring démarré');
 
-                } else {
-                    logger.error('❌ Échec de l\'initialisation des appareils');
-                }
-            });
+            } else {
+                logger.error('❌ Échec de l\'initialisation des appareils');
+            }
             this.isRunning = true;
             // Gestion propre de l'arrêt
             this.setupGracefulShutdown();

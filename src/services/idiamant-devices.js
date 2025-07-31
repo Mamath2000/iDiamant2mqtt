@@ -199,60 +199,65 @@ class IDiamantDevicesHandler {
     }
 
     async _updateShutterStatus() {
-        const getHash = (stateObj) => {
-            const stateStr = JSON.stringify(stateObj);
-            const hash = crypto.createHash('sha1').update(stateStr).digest('hex');
-            return hash;
-        };
-        const response = await this.apiHelper.get(`/homestatus?home_id=${this.homeId}`);
+        try {
+            const getHash = (stateObj) => {
+                const stateStr = JSON.stringify(stateObj);
+                const hash = crypto.createHash('sha1').update(stateStr).digest('hex');
+                return hash;
+            };
+            const response = await this.apiHelper.get(`/homestatus?home_id=${this.homeId}`);
 
-        if (response.status !== 200 || !response.data) {
-            logger.error('❌ Erreur lors de la récupération du statut des devices');
+            if (response.status !== 200 || !response.data) {
+                logger.error('❌ Erreur lors de la récupération du statut des devices');
+                return false;
+            }
+
+            const modules = response.data.body?.home?.modules || [];
+            // Synchronisation de la liste des volets (NBS)
+            const nbsModules = modules.filter(module => module.type === 'NBS');
+            let devicesUpdated = false;
+
+            // Mise à jour des statuts
+            nbsModules.forEach(module => {
+                const device = this.devices.get(module.id);
+                const oldHash = getHash(device);
+                if (device) {
+                    device.reachable = module.reachable;
+                    device.last_seen = module.last_seen;
+                    if (this.persistedStates.has(module.id)) {
+                        const persistedState = this.persistedStates.get(module.id);
+                        device.state = persistedState.state || 'stopped';
+                        device.current_position = persistedState.position || 50;
+                    }
+                    else {
+                        device.state = 'stopped';
+                        device.current_position = 50;
+                    }
+
+                    if (oldHash !== getHash(device)) {
+                        devicesUpdated = true;
+                        this.devices.set(module.id, device);
+                    }
+                }
+            });
+            // Mise à jour du statut du bridge
+            const bridgeModule = modules.find(module => module.type === 'NBG' && module.id === this.bridgeId);
+            if (bridgeModule && bridgeModule.reachable !== this.bridgeReachable) {
+                this.bridgeReachable = bridgeModule.reachable;
+                devicesUpdated = true;
+            }
+
+            if (devicesUpdated) {
+                logger.info('✅ Statuts des volets synchronisés et mis à jour (diff détectée, publication MQTT)');
+                this._publishShutterStatusToMqtt();
+            } else {
+                logger.debug('Aucun changement d\'état détecté, pas de publication MQTT');
+            }
+            return true;
+        } catch (error) {
+            logger.error('❌ Erreur inattendue lors de la mise à jour des statuts des volets:', error.message);
             return false;
         }
-
-        const modules = response.data.body?.home?.modules || [];
-        // Synchronisation de la liste des volets (NBS)
-        const nbsModules = modules.filter(module => module.type === 'NBS');
-        let devicesUpdated = false;
-
-        // Mise à jour des statuts
-        nbsModules.forEach(module => {
-            const device = this.devices.get(module.id);
-            const oldHash = getHash(device);
-            if (device) {
-                device.reachable = module.reachable;
-                device.last_seen = module.last_seen;
-                if (this.persistedStates.has(module.id)) {
-                    const persistedState = this.persistedStates.get(module.id);
-                    device.state = persistedState.state || 'stopped';
-                    device.current_position = persistedState.position || 50;
-                }
-                else {
-                    device.state = 'stopped';
-                    device.current_position = 50;
-                }
-
-                if (oldHash !== getHash(device)) {
-                    devicesUpdated = true;
-                    this.devices.set(module.id, device);
-                }
-            }
-        });
-        // Mise à jour du statut du bridge
-        const bridgeModule = modules.find(module => module.type === 'NBG' && module.id === this.bridgeId);
-        if (bridgeModule && bridgeModule.reachable !== this.bridgeReachable) {
-            this.bridgeReachable = bridgeModule.reachable;
-            devicesUpdated = true;
-        }
-
-        if (devicesUpdated) {
-            logger.info('✅ Statuts des volets synchronisés et mis à jour (diff détectée, publication MQTT)');
-            this._publishShutterStatusToMqtt();
-        } else {
-            logger.debug('Aucun changement d\'état détecté, pas de publication MQTT');
-        }
-        return true;
     }
 
     _publishShutterStatusToMqtt() {
