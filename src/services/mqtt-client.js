@@ -21,7 +21,7 @@ class MQTTClient {
     async connect() {
         return new Promise((resolve, reject) => {
             try {
-                logger.info('🔌 Connexion au broker MQTT...');
+                logger.info('mqtt', '🔌 Connexion au broker MQTT...');
 
                 const options = {
                     clientId: this.config.MQTT_CLIENT_ID,
@@ -47,7 +47,7 @@ class MQTTClient {
 
                 this.client.on('connect', () => {
                     this.isConnected = true;
-                    logger.info('✅ Connexion MQTT établie');
+                    logger.info('mqtt', '✅ Connexion MQTT établie');
 
                     // Publication du statut en ligne
                     this.publish(`${this.config.MQTT_TOPIC_PREFIX}/lwt`, 'online', { retain: true });
@@ -56,7 +56,7 @@ class MQTTClient {
                 });
 
                 this.client.on('error', (error) => {
-                    logger.error('❌ Erreur MQTT:', error);
+                    logger.error('mqtt', '❌ Erreur MQTT:', error);
                     if (!this.isConnected) {
                         reject(error);
                     }
@@ -64,21 +64,21 @@ class MQTTClient {
 
                 this.client.on('close', () => {
                     this.isConnected = false;
-                    logger.info('⚠️ Connexion MQTT fermée');
+                    logger.info('mqtt', '⚠️ Connexion MQTT fermée');
                     // Log détaillé pour diagnostiquer
-                    logger.debug('Détails fermeture MQTT - subscriptions actives:', Array.from(this.subscriptions.keys()));
+                    logger.debug('mqtt', 'Détails fermeture MQTT - subscriptions actives:', Array.from(this.subscriptions.keys()));
                 });
 
                 this.client.on('reconnect', () => {
-                    logger.info('🔄 Reconnexion MQTT...');
+                    logger.info('mqtt', '🔄 Reconnexion MQTT...');
                 });
 
                 this.client.on('disconnect', (packet) => {
-                    logger.warn('⚠️ Déconnexion MQTT reçue:', packet);
+                    logger.warn('mqtt', '⚠️ Déconnexion MQTT reçue:', packet);
                 });
 
                 this.client.on('offline', () => {
-                    logger.warn('⚠️ Client MQTT hors ligne');
+                    logger.warn('mqtt', '⚠️ Client MQTT hors ligne');
                 });
 
                 this.client.on('message', (topic, message, packet) => {
@@ -86,7 +86,7 @@ class MQTTClient {
                 });
 
             } catch (error) {
-                logger.error('❌ Erreur de connexion MQTT:', error);
+                logger.error('mqtt', '❌ Erreur de connexion MQTT:', error);
                 reject(error);
             }
         });
@@ -95,7 +95,7 @@ class MQTTClient {
     handleMessage(topic, message, packet) {
 
         const messageStr = message.toString();
-        logger.debug(`📥 Message MQTT reçu sur ${topic}: ${messageStr}`);
+        logger.debug('mqtt', `📥 Message MQTT reçu sur ${topic}: ${messageStr}`);
 
         // Traitement des messages de commande pour /set et /cmd
         const [, deviceId, last] = topic.split('/');
@@ -117,7 +117,7 @@ class MQTTClient {
             this.handleTokenMessage(deviceId, messageStr, packet);  
 
         } else {
-            logger.debug(`Message MQTT ignoré sur ${topic}`);
+            logger.debug('mqtt', `Message MQTT ignoré sur ${topic}`);
 
         }
     }
@@ -167,7 +167,7 @@ class MQTTClient {
 
     async publish(topic, payload, options = {}) {
         if (!this.isConnected) {
-            logger.error('❌ Client MQTT non connecté, impossible de publier sur', topic);
+            logger.error('mqtt', '❌ Client MQTT non connecté, impossible de publier sur', topic);
             return Promise.reject(new Error('Client MQTT non connecté'));
         }
 
@@ -179,10 +179,10 @@ class MQTTClient {
         return new Promise((resolve, reject) => {
             this.client.publish(topic, payload, publishOptions, (error) => {
                 if (error) {
-                    logger.error(`❌ Erreur publication MQTT sur ${topic}:`, error);
+                    logger.error('mqtt', `❌ Erreur publication MQTT sur ${topic}:`, error);
                     reject(error);
                 } else {
-                    logger.debug(`📤 Message MQTT publié sur ${topic}: ${payload}`);
+                    logger.debug('mqtt', `📤 Message MQTT publié sur ${topic}: ${payload}`);
                     resolve();
                 }
             });
@@ -202,10 +202,10 @@ class MQTTClient {
 
             this.client.subscribe(topic, subscribeOptions, (error, granted) => {
                 if (error) {
-                    logger.error(`❌ Erreur souscription MQTT à ${topic}:`, error);
+                    logger.error('mqtt', `❌ Erreur souscription MQTT à ${topic}:`, error);
                     reject(error);
                 } else {
-                    logger.info(`📥 Souscription MQTT à ${topic} réussie`);
+                    logger.info('mqtt', `📥 Souscription MQTT à ${topic} réussie`);
                     this.subscriptions.set(topic, subscribeOptions);
                     resolve(granted);
                 }
@@ -222,10 +222,10 @@ class MQTTClient {
 
             this.client.unsubscribe(topic, (error) => {
                 if (error) {
-                    logger.error(`❌ Erreur désouscription MQTT de ${topic}:`, error);
+                    logger.error('mqtt', `❌ Erreur désouscription MQTT de ${topic}:`, error);
                     reject(error);
                 } else {
-                    logger.info(`📤 Désouscription MQTT de ${topic} réussie`);
+                    logger.info('mqtt', `📤 Désouscription MQTT de ${topic} réussie`);
                     this.subscriptions.delete(topic);
                     resolve();
                 }
@@ -234,7 +234,7 @@ class MQTTClient {
     }
 
     async subscribeToPersistedStates(deviceIds) {
-        logger.info('📥 Récupération des états persistés depuis MQTT...');
+        logger.info('mqtt', '📥 Récupération des états persistés depuis MQTT...');
         const subscribePromises = [];
 
         for (const deviceId of deviceIds) {
@@ -248,13 +248,13 @@ class MQTTClient {
             // Attendre un délai plus long pour recevoir les messages retained
             return new Promise(resolve => {
                 setTimeout(() => {
-                    logger.info('📥 Récupération des états persistés terminée');
+                    logger.info('mqtt', '📥 Récupération des états persistés terminée');
                     // Ne plus se désabonner automatiquement - garder les souscriptions actives
                     resolve();
                 }, 3000); // Augmenté à 3 secondes
             });
         } catch (error) {
-            logger.error('❌ Erreur lors de la souscription aux états persistés:', error);
+            logger.error('mqtt', '❌ Erreur lors de la souscription aux états persistés:', error);
             throw error;
         }
     }
@@ -265,14 +265,14 @@ class MQTTClient {
             try {
                 await this.unsubscribe(stateTopic);
             } catch (error) {
-                logger.warn(`⚠️ Erreur lors de la désouscription de ${stateTopic}:`, error);
+                logger.warn('mqtt', `⚠️ Erreur lors de la désouscription de ${stateTopic}:`, error);
             }
         }
     }
 
     async disconnect() {
         if (this.client && this.isConnected) {
-            logger.info('🔌 Déconnexion du client MQTT');
+            logger.info('mqtt', '🔌 Déconnexion du client MQTT');
 
             // Publication du statut hors ligne
             await this.publish(`${this.config.MQTT_TOPIC_PREFIX}/bridge/lwt`, 'offline', { retain: true });
@@ -282,14 +282,14 @@ class MQTTClient {
                 try {
                     await this.unsubscribe(topic);
                 } catch (error) {
-                    logger.warn(`⚠️ Erreur lors de la désouscription de ${topic}:`, error);
+                    logger.warn('mqtt', `⚠️ Erreur lors de la désouscription de ${topic}:`, error);
                 }
             }
 
             return new Promise((resolve) => {
                 this.client.end(false, {}, () => {
                     this.isConnected = false;
-                    logger.info('✅ Déconnexion MQTT terminée');
+                    logger.info('mqtt', '✅ Déconnexion MQTT terminée');
                     resolve();
                 });
             });

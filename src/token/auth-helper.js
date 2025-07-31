@@ -17,20 +17,20 @@ class NetatmoAuthHelper {
     }
 
     async checkTokenValidity(token) {
-        logger.debug(`🔍 Token reçu via MQTT: ${JSON.stringify(token)}`);
+        logger.debug('auth', `🔍 Token reçu via MQTT: ${JSON.stringify(token)}`);
         if (!token || !token.timestamp || !token.expires_in) return false;
 
         const nowMs = Date.now();
         const expireMs = token.timestamp + (token.expires_in * 1000);
         const expireDate = new Date(expireMs);
-        logger.info(`Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
+        logger.info('auth', `Le token Netatmo expire le : ${expireDate.toLocaleString()}`);
 
         if (expireMs <= nowMs) {
-            logger.warn('⚠️ Le token Netatmo a expiré');
+            logger.warn('auth', '⚠️ Le token Netatmo a expiré');
             return false;
         }
 
-        logger.info('✅ Token Netatmo valide reçu via MQTT');
+        logger.info('auth', '✅ Token Netatmo valide reçu via MQTT');
 
         try {
             this.appApiHelper.setAccessToken(token.access_token);
@@ -46,12 +46,12 @@ class NetatmoAuthHelper {
                 }
                 return expireMs > nowMs;
             } else {
-                logger.error(`❌ Échec de la récupération des données du HomeId: ${response.status} ${response.statusText}`);
+                logger.error('auth', `❌ Échec de la récupération des données du HomeId: ${response.status} ${response.statusText}`);
                 return false;
             }
 
         } catch (error) {
-            logger.error('❌ Échec de la récupération des données du HomeId:', error);
+            logger.error('auth', '❌ Échec de la récupération des données du HomeId:', error);
             return false;
         }
     }
@@ -66,7 +66,7 @@ class NetatmoAuthHelper {
                 this.startTokenAutoRefresh();
 
             } catch (err) {
-                logger.warn('⚠️ Impossible de parser le token depuis MQTT:', err);
+                logger.warn('auth', '⚠️ Impossible de parser le token depuis MQTT:', err);
 
             }
         }
@@ -76,12 +76,12 @@ class NetatmoAuthHelper {
         // Installe le handler permanent pour les mises à jour de token
         this.mqttClient.setTokenHandler(this.tokenRefreshHandler.bind(this));
         this.mqttClient.subscribe(`${this.bridgeTopic}/token`);
-        logger.info('🔄 Handler permanent pour les mises à jour de token installé');
+        logger.info('auth', '🔄 Handler permanent pour les mises à jour de token installé');
     }
 
     refreshTokenCommandHandler(deviceId, topic, message) {
         if (deviceId === 'bridge' && message === 'refreshToken') {
-            logger.info('🔄 Commande de rafraîchissement du token reçue via MQTT');
+            logger.info('auth', '🔄 Commande de rafraîchissement du token reçue via MQTT');
             this.startTokenAutoRefresh(true);
         }
     }
@@ -93,7 +93,7 @@ class NetatmoAuthHelper {
         }
 
         if (force) {
-            logger.debug('Mode forcé : le token est rafraîchi immédiatement.');
+            logger.debug('auth', 'Mode forcé : le token est rafraîchi immédiatement.');
             this.refreshTimer = setTimeout(() => this.refreshToken(), 1000);
         } else {
             // expire_in = durée de vie en secondes depuis le timestamp
@@ -101,14 +101,14 @@ class NetatmoAuthHelper {
             const nowMs = Date.now();
             let delayMs = expireMs - nowMs - (30 * 60 * 1000); // rafraîchir 30 min avant expiration
             if (delayMs < 1000) delayMs = 1000;
-            logger.debug(`Le token sera rafraîchi dans ${Math.round(delayMs / 1000)} secondes.`);
+            logger.debug('auth', `Le token sera rafraîchi dans ${Math.round(delayMs / 1000)} secondes.`);
             this.refreshTimer = setTimeout(() => this.refreshToken(), delayMs);
         }
     }
 
     async refreshToken() {
         try {
-            logger.info('🔄 Rafraîchissement du token Netatmo...');
+            logger.info('auth', '🔄 Rafraîchissement du token Netatmo...');
             const data = qs.stringify({
                 grant_type: 'refresh_token',
                 refresh_token: this.tokenData.refresh_token,
@@ -126,27 +126,27 @@ class NetatmoAuthHelper {
 
                 // Publie le token sur MQTT
                 this.mqttClient.publish(`${this.bridgeTopic}/token`, JSON.stringify(newToken), { retain: true });
-                logger.info('✅ Token Netatmo rafraîchi avec succès');
+                logger.info('auth', '✅ Token Netatmo rafraîchi avec succès');
 
                 // Relance le refresh automatique avec le nouveau token pour garantir la récursivité
                 this.startTokenAutoRefresh();
             } else {
-                logger.error('❌ Échec du rafraîchissement du token Netatmo:', response.data);
+                logger.error('auth', '❌ Échec du rafraîchissement du token Netatmo:', response.data);
                 if (this.refreshTimer) {
                     clearTimeout(this.refreshTimer);
                 }
                 // Réessaie après un délai
-                logger.warn('🔄 Réessaie du rafraîchissement du token dans 30 secondes');
+                logger.warn('auth', '🔄 Réessaie du rafraîchissement du token dans 30 secondes');
                 this.refreshTimer = setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
             }
         } 
         catch (err) {
-            logger.error('❌ Échec du rafraîchissement du token Netatmo:', err);
+            logger.error('auth', '❌ Échec du rafraîchissement du token Netatmo:', err);
                 if (this.refreshTimer) {
                     clearTimeout(this.refreshTimer);
                 }
                 // Réessaie après un délai
-                logger.warn('🔄 Réessaie du rafraîchissement du token dans 30 secondes');
+                logger.warn('auth', '🔄 Réessaie du rafraîchissement du token dans 30 secondes');
                 this.refreshTimer = setTimeout(() => this.refreshToken(), 30 * 1000); // Réessaie après 30 secondes
         }
     }
