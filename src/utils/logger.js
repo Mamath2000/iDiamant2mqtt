@@ -1,4 +1,3 @@
-require('dotenv').config();
 const { createLogger, format, transports } = require('winston');
 const path = require('path');
 const config = require('../config/config');
@@ -36,16 +35,16 @@ const logFormat = format.combine(
 const winstonLogger = createLogger({
     format: logFormat,
     transports: [
-        // Console
+        // Console (adapté pour Docker)
         new transports.Console({
-          level: config.LOG_LEVEL || 'info', // Niveau de log par défaut
+          level: config.LOG_LEVEL || 'info',
           format: format.combine(
             format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
             format.errors({ stack: true }),
-            format.colorize({ all: true }),
+            // ✅ Couleurs uniquement si pas dans Docker ou si terminal interactif
+            process.stdout.isTTY && !process.env.DOCKER_ENV ? format.colorize({ all: true }) : format.uncolorize(),
             format.printf(({ timestamp, level, message, stack }) => {
               const icon = ICONS[level.replace(/\s*\x1b\[[0-9;]*m/g, '').toLowerCase()] || '';
-              // On retire les codes couleurs du timestamp pour garantir l'affichage
               return stack
                 ? `${timestamp} ${icon}  [${level}]: ${message}\n${stack}`
                 : `${timestamp} ${icon}  [${level}]: ${message}`;
@@ -54,18 +53,18 @@ const winstonLogger = createLogger({
         }),
         // Fichier général (tout)
         new transports.File({
-          filename: path.join(__dirname, '../../logs/app.log'),
-          level: config.APP_LOG_LEVEL || 'debug', // 👈 Niveau configurable
+          filename: path.join(config.LOG_DIRECTORY || './logs', config.APP_LOG_FILE || 'app.log'),
+          level: config.APP_LOG_LEVEL || 'debug',
           maxsize: 5242880, // 5MB
           maxFiles: 5
         }),
         // Fichiers spécifiques pour chaque catégorie
         ...CATEGORIES.map(category => new transports.File({
-          filename: path.join(__dirname, `../../logs/${category}.log`),
-          level: config[`${category.toUpperCase()}_LOG_LEVEL`] || 'info', // Niveau configurable par catégorie
-          format: categoryFilter(category)(), // Appliquer le filtre spécifique
-            maxsize: 5242880,
-            maxFiles: 5
+          filename: path.join(config.LOG_DIRECTORY || './logs', `${category}.log`),
+          level: config[`${category.toUpperCase()}_LOG_LEVEL`] || 'info',
+          format: categoryFilter(category)(),
+          maxsize: 5242880,
+          maxFiles: 5
         }))  
     ]
 });

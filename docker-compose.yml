@@ -2,21 +2,49 @@ version: '3.8'
 
 services:
   idiamant2mqtt:
-    build: .
+    image: mathmath350/idiamant2mqtt:latest
     container_name: idiamant2mqtt
     restart: unless-stopped
+    
+    # Configuration via fichier monté
+    volumes:
+      - ./config.conf:/app/config.conf:ro
+      - ./logs:/app/logs
+    
+    # Variables d'environnement Docker
     environment:
-      - MODE_ENV=production
-    env_file:
-      - .env
+      - DOCKER_ENV=true
+      - NODE_ENV=production
+    
+    # Exposition du port pour le serveur d'authentification
     ports:
       - "3000:3000"
-    volumes:
-      - ./logs:/app/logs
+    
+    # Health check
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('Health check OK')"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 10s
+    
+    # Configuration des logs pour Docker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Exemple avec MQTT externe (optionnel)
+  # mosquitto:
+  #   image: eclipse-mosquitto:latest
+  #   container_name: mosquitto
+  #   restart: unless-stopped
+  #   ports:
+  #     - "1883:1883"
+  #     - "9001:9001"
+  #   volumes:
+  #     - ./mosquitto/config:/mosquitto/config
+  #     - ./mosquitto/data:/mosquitto/data
+  #     - ./mosquitto/log:/mosquitto/log
 

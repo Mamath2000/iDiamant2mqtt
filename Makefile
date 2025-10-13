@@ -4,7 +4,7 @@
 NODE_VERSION := 18
 DOCKER_IMAGE := idiamant2mqtt
 DOCKER_TAG := latest
-DOCKER_USER := mamath2000  # Remplacez par votre nom d'utilisateur Docker Hub
+DOCKER_USER := mathmath350  # Votre nom d'utilisateur Docker Hub
 
 # Couleurs pour les messages
 GREEN := \033[0;32m
@@ -15,7 +15,7 @@ NC := \033[0m # No Color
 
 .PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup auth-url
 .PHONY: service-install service-uninstall service-start service-stop service-logs
-.PHONY: docker-build-push version-bump check-env
+.PHONY: docker-build-push version-bump check-env test-config test-docker-logs
 
 # ========================
 # Aide
@@ -32,11 +32,13 @@ help:
 	@echo "$(YELLOW)🐳 DOCKER & PUBLICATION:$(NC)"
 	@echo "  $(GREEN)make docker-build$(NC)        - Construction de l'image Docker locale"
 	@echo "  $(GREEN)make docker-build-push$(NC)   - Build + Publication Docker Hub + Version bump"
+	@echo "  $(GREEN)make test-docker-logs$(NC)    - Tester les logs dans Docker"
 	@echo "  $(GREEN)make version-bump$(NC)        - Incrémenter manuellement la version"
 	@echo ""
 	@echo "$(YELLOW)🔧 CONFIGURATION:$(NC)"
 	@echo "  $(GREEN)make install$(NC)             - Installation des dépendances"
-	@echo "  $(GREEN)make check-env$(NC)           - Vérifier la configuration"
+	@echo "  $(GREEN)make check-env$(NC)           - Vérifier l'environnement"
+	@echo "  $(GREEN)make test-config$(NC)         - Tester la configuration"
 	@echo "  $(GREEN)make clean$(NC)               - Nettoyage des fichiers temporaires"
 	@echo ""
 	@echo "$(YELLOW)🔄 SERVICE SYSTÈME:$(NC)"
@@ -53,11 +55,31 @@ help:
 # ========================
 
 
-# Configuration initiale
-setup: install
-	@echo "$(GREEN)Configuration initiale...$(NC)"
-	@if [ ! -f .env ]; then cp .env.example .env; echo "$(YELLOW)Fichier .env créé. Veuillez le configurer.$(NC)"; fi
-	@echo "$(GREEN)Projet configuré avec succès !$(NC)"
+# ========================
+# Installation et Configuration
+# ========================
+
+# Configuration initiale du projet
+setup:
+	@echo "$(GREEN)🚀 Configuration initiale du projet iDiamant2MQTT...$(NC)"
+	@if [ ! -f "config.conf" ]; then \
+		echo "$(BLUE)📋 Création du fichier de configuration...$(NC)"; \
+		cp config.conf.example config.conf; \
+		echo "$(YELLOW)⚠️ Veuillez éditer config.conf avec vos paramètres$(NC)"; \
+		echo "$(BLUE)💡 Notamment: client_id, client_secret, idiamant_ip$(NC)"; \
+	else \
+		echo "$(GREEN)✅ Fichier config.conf déjà présent$(NC)"; \
+	fi
+	@mkdir -p logs
+	@echo "$(GREEN)📁 Dossier logs créé$(NC)"
+	npm install
+	@echo ""
+	@echo "$(GREEN)✅ Projet configuré avec succès !$(NC)"
+	@echo "$(BLUE)📝 Prochaines étapes:$(NC)"
+	@echo "  1. Éditez config.conf avec vos paramètres"
+	@echo "  2. Lancez: make auth-url"
+	@echo "  3. Obtenez votre token Netatmo"
+	@echo "  4. Lancez: make start"
 
 # Installation des dépendances
 install:
@@ -105,12 +127,7 @@ docker-logs:
 	@echo "$(GREEN)Affichage des logs Docker...$(NC)"
 	docker logs -f idiamant2mqtt
 
-# Vérification de l'environnement
-check-env:
-	@echo "$(GREEN)Vérification de l'environnement...$(NC)"
-	@node --version || (echo "$(RED)Node.js n'est pas installé$(NC)" && exit 1)
-	@npm --version || (echo "$(RED)npm n'est pas installé$(NC)" && exit 1)
-	@echo "$(GREEN)Environnement OK !$(NC)"
+
 
 # Service
 # ========================
@@ -155,64 +172,12 @@ service-logs:
 
 # Build et publication Docker Hub avec incrémentation de version
 docker-build-push: check-env
-	@echo "$(GREEN)🚀 Build et publication Docker Hub avec incrémentation de version...$(NC)"
-	@bash -c 'set -e; \
-	command -v jq >/dev/null 2>&1 || { echo "$(RED)❌ jq est requis mais non installé. Installez avec: sudo apt install jq$(NC)"; exit 1; }; \
-	docker info | grep -q Username || { echo "$(RED)❌ Non connecté à Docker Hub. Lancez \"docker login\" d\'abord.$(NC)"; exit 1; }; \
-	VERSION=$$(jq -r ".version" package.json); \
-	GIT_REF=$$(git rev-parse --short HEAD); \
-	echo "$(BLUE)📦 Version actuelle: $$VERSION$(NC)"; \
-	echo "$(BLUE)🔀 Ref git: $$GIT_REF$(NC)"; \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		echo "$(YELLOW)⚠️  Warning: Working directory non propre. Les changements non commités ne seront pas inclus.$(NC)"; \
-		git status --short; \
-		read -p "Continuer quand même ? (y/N): " -n 1 -r; \
-		echo; \
-		if [[ ! $$REPLY =~ ^[Yy]$$ ]]; then \
-			echo "$(RED)❌ Abandon.$(NC)"; \
-			exit 1; \
-		fi; \
-	fi; \
-	echo "$(GREEN)🔨 Construction de l\'image Docker...$(NC)"; \
-	docker build \
-		--build-arg GIT_REF=$$GIT_REF \
-		--build-arg BUILD_DATE=$$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-		-t $(DOCKER_IMAGE):latest \
-		-t $(DOCKER_IMAGE):$$VERSION \
-		-t $(DOCKER_IMAGE):$$GIT_REF \
-		.; \
-	echo "$(GREEN)🏷️  Tagging des images...$(NC)"; \
-	docker tag $(DOCKER_IMAGE):latest $(DOCKER_USER)/$(DOCKER_IMAGE):latest; \
-	docker tag $(DOCKER_IMAGE):$$VERSION $(DOCKER_USER)/$(DOCKER_IMAGE):$$VERSION; \
-	docker tag $(DOCKER_IMAGE):$$GIT_REF $(DOCKER_USER)/$(DOCKER_IMAGE):$$GIT_REF; \
-	echo "$(GREEN)📤 Publication sur Docker Hub...$(NC)"; \
-	docker push $(DOCKER_USER)/$(DOCKER_IMAGE):latest; \
-	docker push $(DOCKER_USER)/$(DOCKER_IMAGE):$$VERSION; \
-	docker push $(DOCKER_USER)/$(DOCKER_IMAGE):$$GIT_REF; \
-	echo "$(GREEN)🔢 Incrémentation de la version...$(NC)"; \
-	IFS="." read -r MAJOR MINOR PATCH <<< "$$VERSION"; \
-	PATCH=$$((PATCH + 1)); \
-	NEW_VERSION="$$MAJOR.$$MINOR.$$PATCH"; \
-	echo "$(GREEN)📝 Mise à jour de package.json vers $$NEW_VERSION...$(NC)"; \
-	jq ".version = \"$$NEW_VERSION\"" package.json > package.json.tmp && mv package.json.tmp package.json; \
-	echo "$(GREEN)💾 Commit de la nouvelle version...$(NC)"; \
-	git add package.json; \
-	git commit -m "🚀 Bump version to $$NEW_VERSION\n\n- Auto-increment after Docker build\n- Docker images published:\n  - $(DOCKER_USER)/$(DOCKER_IMAGE):latest\n  - $(DOCKER_USER)/$(DOCKER_IMAGE):$$VERSION\n  - $(DOCKER_USER)/$(DOCKER_IMAGE):$$GIT_REF"; \
-	echo ""; \
-	echo "$(GREEN)✅ Build et publication terminés avec succès!$(NC)"; \
-	echo "$(BLUE)📦 Version précédente: $$VERSION$(NC)"; \
-	echo "$(BLUE)📦 Nouvelle version: $$NEW_VERSION$(NC)"; \
-	echo "$(BLUE)🐳 Images Docker publiées:$(NC)"; \
-	echo "   - $(DOCKER_USER)/$(DOCKER_IMAGE):latest"; \
-	echo "   - $(DOCKER_USER)/$(DOCKER_IMAGE):$$VERSION"; \
-	echo "   - $(DOCKER_USER)/$(DOCKER_IMAGE):$$GIT_REF"; \
-	echo ""; \
-	echo "$(YELLOW)💡 Pour déployer la nouvelle version:$(NC)"; \
-	echo "   docker pull $(DOCKER_USER)/$(DOCKER_IMAGE):latest"; \
-	echo "   docker run $(DOCKER_USER)/$(DOCKER_IMAGE):latest"; \
-	echo ""; \
-	echo "$(YELLOW)🔄 N\'oubliez pas de push le commit de version:$(NC)"; \
-	echo "   git push origin main"'
+	@echo "$(GREEN)🚀 Lancement du build et publication Docker Hub...$(NC)"
+	@if [ ! -f "scripts/build-docker-image.sh" ]; then \
+		echo "$(RED)❌ Script build-docker-image.sh non trouvé$(NC)"; \
+		exit 1; \
+	fi
+	@DOCKER_USER=$(DOCKER_USER) ./scripts/build-docker-image.sh
 
 # Incrémenter manuellement la version
 version-bump:
@@ -239,13 +204,33 @@ check-env:
 	@echo "$(GREEN)✅ Git: $$(git --version | head -n1)$(NC)"
 	@echo "$(GREEN)✅ Docker: $$(docker --version)$(NC)"
 	@echo "$(GREEN)✅ jq: $$(jq --version)$(NC)"
-	@if [ ! -f ".env" ]; then \
-		echo "$(YELLOW)⚠️ Fichier .env manquant$(NC)"; \
-		echo "$(BLUE)💡 Créez le fichier: cp .env.example .env$(NC)"; \
+	@if [ ! -f "config.conf" ]; then \
+		echo "$(YELLOW)⚠️ Fichier config.conf manquant$(NC)"; \
+		echo "$(BLUE)💡 Créez le fichier: cp config.conf.example config.conf$(NC)"; \
 	else \
-		echo "$(GREEN)✅ Fichier .env présent$(NC)"; \
+		echo "$(GREEN)✅ Fichier config.conf présent$(NC)"; \
 	fi
 	@echo "$(GREEN)✅ Tous les prérequis sont satisfaits$(NC)"
+
+# Test de la configuration
+test-config:
+	@echo "$(GREEN)🔍 Test de la configuration...$(NC)"
+	@node -e "try { const config = require('./src/config/config'); console.log('$(GREEN)✅ Configuration chargée avec succès$(NC)'); console.log('$(BLUE)📋 Paramètres principaux:$(NC)'); console.log('  Client ID:', config.IDIAMANT_CLIENT_ID ? '✅ Configuré' : '❌ Manquant'); console.log('  MQTT Broker:', config.MQTT_BROKER_URL); console.log('  Log Level:', config.LOG_LEVEL); console.log('  Environment:', config.MODE_ENV); } catch(e) { console.error('$(RED)❌ Erreur de configuration:$(NC)', e.message); process.exit(1); }"
+	@echo "$(GREEN)🔍 Test du système de logging...$(NC)"
+	@node -e "const logger = require('./src/utils/logger'); logger.info('Test configuration OK'); logger.info('auth', 'Test auth logging OK'); console.log('$(GREEN)✅ Système de logging fonctionnel$(NC)')"
+
+# Test des logs Docker
+test-docker-logs: docker-build
+	@echo "$(GREEN)🐳 Test des logs Docker...$(NC)"
+	@if [ ! -f "config-docker-test.conf" ]; then \
+		echo "$(BLUE)📋 Création de la configuration de test Docker...$(NC)"; \
+		cp config.conf.example config-docker-test.conf; \
+		sed -i 's/VOTRE_CLIENT_ID/test_client_id/g' config-docker-test.conf; \
+		sed -i 's/VOTRE_CLIENT_SECRET/test_client_secret/g' config-docker-test.conf; \
+	fi
+	@echo "$(GREEN)🔍 Lancement du test Docker...$(NC)"
+	@docker run --rm -v $(PWD)/config-docker-test.conf:/app/config.conf $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		timeout 5s node -e "const logger = require('./src/utils/logger'); logger.info('✅ Logs Docker fonctionnels'); logger.warn('⚠️ Test warning'); logger.error('❌ Test error');" || echo "$(GREEN)✅ Test Docker terminé$(NC)"
 
 # Par défaut, afficher l'aide
 .DEFAULT_GOAL := help

@@ -15,7 +15,8 @@ const logger = require('../utils/logger');
  */
 class NetatmoAuthServer {
   constructor() {
-    this.port = 3001;
+    this.port = config.AUTH_SERVER_PORT || 3000;
+    this.host = config.AUTH_SERVER_HOST || '0.0.0.0';
     this.server = null;
     this.mqttClient = null;
     this.redirectUri = config.NETATMO_REDIRECT_URI;
@@ -326,11 +327,11 @@ class NetatmoAuthServer {
       });
 
       await new Promise((resolve, reject) => {
-        this.server.listen(this.port, (error) => {
+        this.server.listen(this.port, this.host, (error) => {
           if (error) {
             reject(error);
           } else {
-            logger.info(`Serveur d'authentification démarré sur http://localhost:${this.port}`);
+            logger.info(`Serveur d'authentification démarré sur http://${this.host}:${this.port}`);
             logger.info(`Callback : ${this.redirectUri}`);
             logger.info('En attente du callback OAuth2...');
             resolve();

@@ -34,6 +34,10 @@ RUN mkdir -p logs && \
 # Basculement vers l'utilisateur non-root
 USER nextjs
 
+# Variables d'environnement pour Docker
+ENV DOCKER_ENV=true
+ENV NODE_ENV=production
+
 # Exposition du port
 EXPOSE 3000
 

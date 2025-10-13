@@ -1,0 +1,56 @@
+# ==============================================
+# Configuration iDiamant2MQTT - EXEMPLE
+# ==============================================
+# Copiez ce fichier vers config.conf et modifiez les valeurs selon vos besoins
+
+[netatmo]
+# Configuration API Netatmo
+api_url = https://api.netatmo.com
+redirect_uri = https://votre-domaine.com/netatmo/callback
+
+# Identifiants de l'application Netatmo
+# Obtenez vos identifiants sur https://dev.netatmo.com/apps/
+client_id = VOTRE_CLIENT_ID
+client_secret = VOTRE_CLIENT_SECRET
+
+[device]
+# Adresse IP de votre iDiamant
+idiamant_ip = 192.168.1.100
+
+[mqtt]
+# Configuration du broker MQTT
+broker_url = mqtt://localhost:1883
+username = 
+password = 
+client_id = idiamant2mqtt_${netatmo.client_id}
+topic_prefix = idiamant2mqtt
+
+# Configuration réseau MQTT
+keepalive = 60
+
+[homeassistant]
+# Intégration Home Assistant
+discovery = true
+discovery_prefix = homeassistant
+device_name = iDiamant Bridge
+
+[logging]
+# Niveaux de log disponibles: debug, info, warn, error
+console_level = info
+file_level = debug
+auth_level = debug
+mqtt_level = info
+
+[application]
+# Configuration générale de l'application
+environment = production
+sync_interval = 30000
+
+# Configuration du serveur d'authentification
+auth_server_port = 3000
+auth_server_host = 0.0.0.0
+
+# Chemins des fichiers de log
+log_directory = ./logs
+app_log_file = app.log
+auth_log_file = auth.log
