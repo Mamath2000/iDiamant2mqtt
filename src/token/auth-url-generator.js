@@ -17,7 +17,7 @@ logger.info(`Niveau de log pour l'authentification : ${logger.level}`);
 class NetatmoAuthUrlGenerator {
   constructor() {
     this.clientId = config.IDIAMANT_CLIENT_ID;
-    this.redirectUri = process.env.NETATMO_REDIRECT_URI || 'http://localhost:3001/netatmo/callback';
+    this.redirectUri = config.NETATMO_REDIRECT_URI;
     this.scope = 'read_bubendorff write_bubendorff';
     this.state = this.generateState();
     this.authHelper = new NetatmoAuthHelper();

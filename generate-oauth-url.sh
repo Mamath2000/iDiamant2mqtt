@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Script pour générer l'URL d'autorisation OAuth2 en production Docker
+# Usage: ./generate-oauth-url.sh
+
+set -e
+
+echo "🔑 Génération de l'URL d'autorisation OAuth2 Netatmo"
+echo ""
+
+# Vérifier que Docker est disponible
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker n'est pas installé ou accessible"
+    exit 1
+fi
+
+# Vérifier que config.conf existe
+if [ ! -f "config.conf" ]; then
+    echo "❌ Fichier config.conf non trouvé"
+    echo "💡 Créez le fichier avec vos identifiants Netatmo :"
+    echo "   cp config.conf.example config.conf"
+    echo "   nano config.conf"
+    exit 1
+fi
+
+# Récupérer l'image Docker
+DOCKER_USER=${DOCKER_USER:-"mathmath350"}
+DOCKER_IMAGE="idiamant2mqtt"
+
+echo "🐳 Utilisation de l'image Docker: $DOCKER_USER/$DOCKER_IMAGE:latest"
+
+# Vérifier si l'image existe localement
+if ! docker images --format "table {{.Repository}}:{{.Tag}}" | grep -q "$DOCKER_USER/$DOCKER_IMAGE:latest"; then
+    echo "📥 Téléchargement de l'image Docker..."
+    docker pull "$DOCKER_USER/$DOCKER_IMAGE:latest" || {
+        echo "❌ Impossible de télécharger l'image Docker"
+        echo "💡 Vérifiez que l'image existe sur Docker Hub"
+        exit 1
+    }
+fi
+
+echo "⚡ Génération de l'URL d'autorisation..."
+echo ""
+
+# Exécuter le générateur d'URL dans le conteneur
+docker run --rm \
+    -v "$(pwd)/config.conf:/app/config.conf:ro" \
+    "$DOCKER_USER/$DOCKER_IMAGE:latest" \
+    node src/token/auth-url-generator.js
+
+echo ""
+echo "✅ URL générée avec succès !"
+echo "📝 Copiez cette URL dans votre navigateur pour autoriser l'application"
+echo "🔗 Après autorisation, le token sera automatiquement envoyé via MQTT"

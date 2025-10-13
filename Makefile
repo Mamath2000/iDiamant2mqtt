@@ -5,6 +5,7 @@ NODE_VERSION := 18
 DOCKER_IMAGE := idiamant2mqtt
 DOCKER_TAG := latest
 DOCKER_USER := mathmath350  # Votre nom d'utilisateur Docker Hub
+DOCKER_FULL_IMAGE := $(DOCKER_USER)/$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # Couleurs pour les messages
 GREEN := \033[0;32m
@@ -15,7 +16,7 @@ NC := \033[0m # No Color
 
 .PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup auth-url
 .PHONY: service-install service-uninstall service-start service-stop service-logs
-.PHONY: docker-build-push version-bump check-env test-config test-docker-logs
+.PHONY: docker-build-push version-bump check-env test-config test-docker-logs docker-auth-url
 
 # ========================
 # Aide
@@ -32,6 +33,7 @@ help:
 	@echo "$(YELLOW)🐳 DOCKER & PUBLICATION:$(NC)"
 	@echo "  $(GREEN)make docker-build$(NC)        - Construction de l'image Docker locale"
 	@echo "  $(GREEN)make docker-build-push$(NC)   - Build + Publication Docker Hub + Version bump"
+	@echo "  $(GREEN)make docker-auth-url$(NC)     - Générer URL OAuth2 via Docker"
 	@echo "  $(GREEN)make test-docker-logs$(NC)    - Tester les logs dans Docker"
 	@echo "  $(GREEN)make version-bump$(NC)        - Incrémenter manuellement la version"
 	@echo ""
@@ -132,9 +134,9 @@ docker-logs:
 # Service
 # ========================
 
-# Commandes d'authentification Netatmo
+# Génération de l'URL d'autorisation
 auth-url:
-	@echo "$(GREEN)Génération de l'URL d'autorisation OAuth2...$(NC)"
+	@echo "$(GREEN)🔑 Génération de l'URL d'autorisation OAuth2...$(NC)"
 	@node src/token/auth-url-generator.js
 
 # Désinstallation du service systemd
@@ -218,6 +220,16 @@ test-config:
 	@node -e "try { const config = require('./src/config/config'); console.log('$(GREEN)✅ Configuration chargée avec succès$(NC)'); console.log('$(BLUE)📋 Paramètres principaux:$(NC)'); console.log('  Client ID:', config.IDIAMANT_CLIENT_ID ? '✅ Configuré' : '❌ Manquant'); console.log('  MQTT Broker:', config.MQTT_BROKER_URL); console.log('  Log Level:', config.LOG_LEVEL); console.log('  Environment:', config.MODE_ENV); } catch(e) { console.error('$(RED)❌ Erreur de configuration:$(NC)', e.message); process.exit(1); }"
 	@echo "$(GREEN)🔍 Test du système de logging...$(NC)"
 	@node -e "const logger = require('./src/utils/logger'); logger.info('Test configuration OK'); logger.info('auth', 'Test auth logging OK'); console.log('$(GREEN)✅ Système de logging fonctionnel$(NC)')"
+
+# Génération de l'URL d'autorisation via Docker
+docker-auth-url:
+	@echo "$(GREEN)🔑 Génération de l'URL d'autorisation OAuth2 via Docker...$(NC)"
+	@if [ ! -f "config.conf" ]; then \
+		echo "$(RED)❌ Fichier config.conf non trouvé$(NC)"; \
+		echo "$(BLUE)💡 Créez le fichier: cp config.conf.example config.conf$(NC)"; \
+		exit 1; \
+	fi
+	@docker run --rm -v $(PWD)/config.conf:/app/config.conf:ro $(DOCKER_FULL_IMAGE) node src/token/auth-url-generator.js
 
 # Test des logs Docker
 test-docker-logs: docker-build

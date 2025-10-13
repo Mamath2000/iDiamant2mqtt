@@ -46,30 +46,65 @@ make setup
 npm install
 
 # Copie du fichier de configuration
-cp .env.example .env
+cp config.conf.example config.conf
 
 # Édition de la configuration
-nano .env
+nano config.conf
 ```
 
 ## ⚙️ Configuration
 
-### Variables d'environnement
+### Fichier de configuration
 
-Éditez le fichier `.env` avec vos paramètres :
+Éditez le fichier `config.conf` avec vos paramètres :
 
-```bash
-# Configuration iDiamant/Netatmo
-IDIAMANT_CLIENT_ID=your_client_id_here
-IDIAMANT_CLIENT_SECRET=your_client_secret_here
-IDIAMANT_USERNAME=your_netatmo_username
-IDIAMANT_PASSWORD=your_netatmo_password
+```ini
+[netatmo]
+client_id = your_client_id_here
+client_secret = your_client_secret_here
+username = your_netatmo_username
+password = your_netatmo_password
 
-# Configuration MQTT
-MQTT_BROKER_URL=mqtt://localhost:1883
-MQTT_USERNAME=your_mqtt_username
-MQTT_PASSWORD=your_mqtt_password
+[mqtt]
+broker_url = mqtt://localhost:1883
+username = your_mqtt_username
+password = your_mqtt_password
+
+[auth]
+# Port pour le serveur d'authentification OAuth (optionnel)
+auth_server_port = 3000
+auth_server_host = 0.0.0.0
+
+[app]
+log_level = info
+log_to_file = false
+device_refresh_interval = 300000
+max_retries = 3
 ```
+
+## 🔐 Authentification OAuth2
+
+Pour utiliser l'authentification OAuth2 au lieu des identifiants directs :
+
+### En développement
+```bash
+# Génération de l'URL d'autorisation
+make auth-url
+
+# Ou directement
+node src/token/auth-url-generator.js
+```
+
+### En production Docker
+```bash
+# Avec Make (recommandé)
+make docker-auth-url
+
+# Ou avec le script standalone
+./generate-oauth-url.sh
+```
+
+L'URL générée vous permettra d'autoriser l'application et de recevoir le token automatiquement via MQTT.
 
 ### Obtention des identifiants Netatmo
 
