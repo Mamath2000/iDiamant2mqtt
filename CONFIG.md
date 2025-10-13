@@ -147,6 +147,5 @@ chmod 755 logs
 | `make auth-url` | Générer URL OAuth2 |
 | `make docker-build-push` | Build + Publish + Version |
 | `make check-env` | Vérifier l'environnement |
-| `make service-install` | Installer service systemd |
 
 La nouvelle configuration est plus flexible, plus lisible et plus robuste ! 🚀

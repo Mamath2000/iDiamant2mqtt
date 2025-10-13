@@ -15,7 +15,6 @@ BLUE := \033[0;34m
 NC := \033[0m # No Color
 
 .PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup auth-url
-.PHONY: service-install service-uninstall service-start service-stop service-logs
 .PHONY: docker-build-push version-bump check-env test-config test-docker-logs docker-auth-url
 
 # ========================
@@ -43,11 +42,7 @@ help:
 	@echo "  $(GREEN)make test-config$(NC)         - Tester la configuration"
 	@echo "  $(GREEN)make clean$(NC)               - Nettoyage des fichiers temporaires"
 	@echo ""
-	@echo "$(YELLOW)🔄 SERVICE SYSTÈME:$(NC)"
-	@echo "  $(GREEN)make service-install$(NC)     - Installer le service systemd"
-	@echo "  $(GREEN)make service-start$(NC)       - Démarrer le service systemd"
-	@echo "  $(GREEN)make service-stop$(NC)        - Arrêter le service systemd"
-	@echo "  $(GREEN)make service-logs$(NC)        - Logs du service systemd"
+
 	@echo ""
 	@echo "$(BLUE)📦 Version actuelle: $$(grep '"version"' package.json | sed 's/.*"version": "\(.*\)".*/\1/')$(NC)"
 	@echo ""
@@ -138,35 +133,6 @@ docker-logs:
 auth-url:
 	@echo "$(GREEN)🔑 Génération de l'URL d'autorisation OAuth2...$(NC)"
 	@node src/token/auth-url-generator.js
-
-# Désinstallation du service systemd
-service-uninstall:
-	@echo "Suppression du service systemd idiamant2mqtt..."
-	sudo systemctl stop idiamant2mqtt.service || true
-	sudo systemctl disable idiamant2mqtt.service || true
-	sudo rm -f /etc/systemd/system/idiamant2mqtt.service
-	sudo systemctl daemon-reload
-	@echo "Service supprimé. Utilisez 'sudo systemctl status idiamant2mqtt' pour vérifier."
-
-# Installation du service systemd
-service-install:
-	@echo "Installation du service systemd idiamant2mqtt..."
-	@bash scripts/install-systemd-service.sh
-
-# Démarrer le service systemd
-service-start:
-	@echo "Démarrage du service systemd idiamant2mqtt..."
-	sudo systemctl start idiamant2mqtt.service
-
-# Arrêter le service systemd
-service-stop:
-	@echo "Arrêt du service systemd idiamant2mqtt..."
-	sudo systemctl stop idiamant2mqtt.service
-
-# Logs du service systemd
-service-logs:
-	@echo "Affichage des logs du service systemd idiamant2mqtt..."
-	sudo journalctl -u idiamant2mqtt.service -f
 
 # ========================
 # Build et Publication
