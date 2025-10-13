@@ -49,12 +49,8 @@ class NetatmoAuthUrlGenerator {
   }
 
   async displayInstructions() {
-    // if (!this.server.checkConfiguration(true)) {
-    //   logger.error('❌ Configuration incomplète. Vérifiez votre fichier .env.');
-    //   process.exit(1);
-    // }
 
-    
+  
     const auth = this.generateAuthUrl();
 
     logger.info('Ouvrez cette URL dans votre navigateur pour autoriser l\'application :');

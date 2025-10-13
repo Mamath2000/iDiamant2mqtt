@@ -231,7 +231,7 @@ class NetatmoAuthServer {
     const pathname = parsedUrl.pathname;
 
     // Route de test pour vérifier le reverse proxy
-    if (pathname === '/test' || pathname === '/health') {
+    if (pathname === '/netatmo/test' || pathname === '/netatmo/health') {
       this.handleHealthCheck(req, res);
       return;
     }
@@ -378,8 +378,11 @@ class NetatmoAuthServer {
           } else {
             logger.info(`Serveur d'authentification démarré sur http://${this.host}:${this.port}`);
             logger.info(`Callback OAuth2 : ${this.redirectUri}`);
-            logger.info(`Test endpoint : http://${this.host}:${this.port}/test`);
-            logger.info(`Health check : http://${this.host}:${this.port}/health`);
+            
+            // Construire les URLs de test basées sur la base URL du callback
+            const baseUrl = this.redirectUri.replace(/\/[^\/]*$/, '');
+            logger.info(`Test endpoint : ${baseUrl}/test`);
+            logger.info(`Health check : ${baseUrl}/health`);
             logger.info('En attente du callback OAuth2...');
             resolve();
           }

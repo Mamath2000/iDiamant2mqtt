@@ -23,6 +23,14 @@ if [ ! -f "config.conf" ]; then
     exit 1
 fi
 
+# Lire la configuration pour récupérer le port
+AUTH_PORT=$(grep "^auth_server_port" config.conf | cut -d'=' -f2 | tr -d ' ' || echo "3000")
+if [ -z "$AUTH_PORT" ]; then
+    AUTH_PORT=3000
+fi
+
+echo "📋 Port du serveur d'authentification: $AUTH_PORT"
+
 # Récupérer l'image Docker
 DOCKER_USER=${DOCKER_USER:-"mathmath350"}
 DOCKER_IMAGE="idiamant2mqtt"
@@ -45,6 +53,7 @@ echo ""
 # Exécuter le générateur d'URL dans le conteneur
 docker run --rm \
     -v "$(pwd)/config.conf:/app/config.conf:ro" \
+    -p "$AUTH_PORT:$AUTH_PORT" \
     "$DOCKER_USER/$DOCKER_IMAGE:latest" \
     node src/token/auth-url-generator.js
 
