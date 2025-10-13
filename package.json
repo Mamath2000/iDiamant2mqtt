@@ -1,6 +1,6 @@
 {
   "name": "idiamant2mqtt",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Passerelle entre iDiamant (Netatmo) et MQTT pour contrôler les volets roulants via Home Assistant",
   "main": "src/index.js",
   "scripts": {
