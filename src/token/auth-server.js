@@ -226,16 +226,61 @@ class NetatmoAuthServer {
     });
   }
 
-  handleCallback(req, res) {
+  handleRequest(req, res) {
     const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
 
-    if (parsedUrl.pathname !== '/netatmo/callback') {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end('<h1>404 - Page non trouvée</h1>');
+    // Route de test pour vérifier le reverse proxy
+    if (pathname === '/test' || pathname === '/health') {
+      this.handleHealthCheck(req, res);
       return;
     }
 
-    const { code, state, error } = parsedUrl.query;
+    // Route du callback OAuth2
+    if (pathname === '/netatmo/callback') {
+      this.handleCallback(req, res, parsedUrl.query);
+      return;
+    }
+
+    // Route 404
+    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+      <html>
+        <head><title>404 - Page non trouvée</title></head>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+          <h1>❌ 404 - Page non trouvée</h1>
+          <p>Endpoints disponibles :</p>
+          <ul>
+            <li><a href="/test">/test</a> - Test du reverse proxy</li>
+            <li><a href="/health">/health</a> - Health check</li>
+            <li>/netatmo/callback - Callback OAuth2</li>
+          </ul>
+        </body>
+      </html>
+    `);
+  }
+
+  handleHealthCheck(req, res) {
+    const now = new Date().toISOString();
+    logger.info('🔍 Test endpoint appelé depuis:', req.connection.remoteAddress);
+    
+    res.writeHead(200, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify({
+      status: 'OK',
+      message: 'Serveur d\'authentification iDiamant2MQTT fonctionnel',
+      timestamp: now,
+      endpoint: req.url,
+      version: '1.0.0',
+      ready_for_oauth: true
+    }, null, 2));
+  }
+
+  handleCallback(req, res, query) {
+
+    const { code, state, error } = query;
 
     // Vérification de l'état pour la sécurité
     if (this.expectedState && state !== this.expectedState) {
@@ -323,7 +368,7 @@ class NetatmoAuthServer {
       await this.connectMQTT();
 
       this.server = http.createServer((req, res) => {
-        this.handleCallback(req, res);
+        this.handleRequest(req, res);
       });
 
       await new Promise((resolve, reject) => {
@@ -332,7 +377,9 @@ class NetatmoAuthServer {
             reject(error);
           } else {
             logger.info(`Serveur d'authentification démarré sur http://${this.host}:${this.port}`);
-            logger.info(`Callback : ${this.redirectUri}`);
+            logger.info(`Callback OAuth2 : ${this.redirectUri}`);
+            logger.info(`Test endpoint : http://${this.host}:${this.port}/test`);
+            logger.info(`Health check : http://${this.host}:${this.port}/health`);
             logger.info('En attente du callback OAuth2...');
             resolve();
           }
