@@ -97,10 +97,7 @@ node src/token/auth-url-generator.js
 
 ### En production Docker
 ```bash
-# Avec Make (recommandé)
-make docker-auth-url
-
-# Ou avec le script standalone
+# avec le script standalone for Docker (recommandé)
 ./generate-oauth-url.sh
 ```
 
