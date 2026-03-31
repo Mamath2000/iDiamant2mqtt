@@ -14,6 +14,7 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+
 # Vérifier que config.conf existe
 if [ ! -f "config.conf" ]; then
     echo "❌ Fichier config.conf non trouvé"
@@ -21,6 +22,13 @@ if [ ! -f "config.conf" ]; then
     echo "   cp config.conf.example config.conf"
     echo "   nano config.conf"
     exit 1
+fi
+
+# Vérifier si un conteneur Docker Compose tourne déjà
+if docker compose ps --status running | grep -q "Up"; then
+    echo "⚠️  Un ou plusieurs conteneurs Docker Compose sont déjà en cours d'exécution. Arrêt en cours..."
+    docker compose down
+    echo "✅ Conteneurs arrêtés."
 fi
 
 # Lire la configuration pour récupérer le port
@@ -61,3 +69,13 @@ echo ""
 echo "✅ URL générée avec succès !"
 echo "📝 Copiez cette URL dans votre navigateur pour autoriser l'application"
 echo "🔗 Après autorisation, le token sera automatiquement envoyé via MQTT"
+
+# Proposer de relancer Docker Compose
+read -p $'\nVoulez-vous redémarrer les conteneurs Docker Compose ? (o/n) : ' restart_choice
+if [[ "$restart_choice" =~ ^[Oo]$ ]]; then
+    echo "🔄 Redémarrage de Docker Compose..."
+    docker compose up -d
+    echo "✅ Docker Compose redémarré."
+else
+    echo "⏸️  Docker Compose n'a pas été redémarré."
+fi

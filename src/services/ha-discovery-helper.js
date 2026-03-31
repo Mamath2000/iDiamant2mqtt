@@ -49,7 +49,7 @@ class haDiscoveryHelper {
             components: {
                 idiamant_gateway_refresh_token: {
                     platform: 'button',
-                    object_id: 'idiamant_gateway_refresh_token',
+                    default_entity_id: 'button.idiamant_gateway_refresh_token',
                     unique_id: 'idiamant_gateway_refresh_token',
                     name: 'Refresh Token',
                     force_update: true,
@@ -59,7 +59,7 @@ class haDiscoveryHelper {
                 },
                 idiamant_gateway_token_expire_at: {
                     platform: 'sensor',
-                    object_id: 'idiamant_gateway_token_expire_at',
+                    default_entity_id: 'sensor.idiamant_gateway_token_expire_at',
                     unique_id: 'idiamant_gateway_token_expire_at',
                     name: 'Token Expire At',
                     force_update: true,
@@ -71,7 +71,7 @@ class haDiscoveryHelper {
                 },
                 idiamant_gateway_token_expire_at_text: {
                     platform: 'sensor',
-                    object_id: 'idiamant_gateway_token_expire_at_text',
+                    default_entity_id: 'sensor.idiamant_gateway_token_expire_at_text',
                     unique_id: 'idiamant_gateway_token_expire_at_text',
                     name: 'Token Expire At Text',
                     force_update: true,
@@ -81,7 +81,7 @@ class haDiscoveryHelper {
                 },
                 idiamant_gateway_state: {
                     platform: 'binary_sensor',
-                    object_id: 'idiamant_gateway_state',
+                    default_entity_id: 'binary_sensor.idiamant_gateway_state',
                     unique_id: 'idiamant_gateway_state',
                     name: 'State',
                     force_update: true,
@@ -139,7 +139,7 @@ class haDiscoveryHelper {
             components: {
                 [`idiamant_${device.name}_state_label`]: {
                     platform: "sensor",
-                    object_id: `volet_${device.name}_state_label`,
+                    default_entity_id: `sensor.volet_${device.name}_state_label`,
                     unique_id: `idiamant_${device.id}_state_label`,
                     name: "Label",
                     state_topic: `${stateTopic}/state_fr`,
@@ -149,7 +149,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_state`]: {
                     platform: "sensor",
-                    object_id: `volet_${device.name}_state`,
+                    default_entity_id: `sensor.volet_${device.name}_state`,
                     unique_id: `idiamant_${device.id}_state`,
                     name: "Etat",
                     state_topic: `${stateTopic}/state`,
@@ -160,7 +160,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_position`]: {
                     platform: "sensor",
-                    object_id: `volet_${device.name}_position`,
+                    default_entity_id: `sensor.volet_${device.name}_position`,
                     unique_id: `idiamant_${device.id}_position`,
                     name: "Position",
                     state_topic: `${stateTopic}/state`,
@@ -172,7 +172,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_is_open`]: {
                     platform: "binary_sensor",
-                    object_id: `volet_${device.name}_is_open`,
+                    default_entity_id: `binary_sensor.volet_${device.name}_is_open`,
                     unique_id: `idiamant_${device.id}_is_open`,
                     name: "Est ouvert",
                     state_topic: `${stateTopic}/state`,
@@ -185,7 +185,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_is_closed`]: {
                     platform: "binary_sensor",
-                    object_id: `volet_${device.name}_is_closed`,
+                    default_entity_id: `binary_sensor.volet_${device.name}_is_closed`,
                     unique_id: `idiamant_${device.id}_is_closed`,
                     name: "Est fermé",
                     state_topic: `${stateTopic}/state`,
@@ -198,7 +198,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_cmd_open`]: {
                     platform: "button",
-                    object_id: `volet_${device.name}_cmd_open`,
+                    default_entity_id: `button.volet_${device.name}_cmd_open`,
                     unique_id: `idiamant_${device.id}_cmd_open`,
                     name: "Ouvrir",
                     command_topic: `${stateTopic}/cmd`,
@@ -208,7 +208,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_cmd_close`]: {
                     platform: "button",
-                    object_id: `volet_${device.name}_cmd_close`,
+                    default_entity_id: `button.volet_${device.name}_cmd_close`,
                     unique_id: `idiamant_${device.id}_cmd_close`,
                     name: "Fermer",
                     command_topic: `${stateTopic}/cmd`,
@@ -218,7 +218,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_cmd_half`]: {
                     platform: "button",
-                    object_id: `volet_${device.name}_cmd_half`,
+                    default_entity_id: `button.volet_${device.name}_cmd_half`,
                     unique_id: `idiamant_${device.id}_cmd_half`,
                     name: "Entreouvrir",
                     command_topic: `${stateTopic}/cmd`,
@@ -228,7 +228,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_cmd_stop`]: {
                     platform: "button",
-                    object_id: `volet_${device.name}_cmd_stop`,
+                    default_entity_id: `button.volet_${device.name}_cmd_stop`,
                     unique_id: `idiamant_${device.id}_cmd_stop`,
                     name: "Arrêt",
                     command_topic: `${stateTopic}/cmd`,
@@ -238,7 +238,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_last_seen`]: {
                     platform: 'sensor',
-                    object_id: `volet_${device.name}_last_seen`,
+                    default_entity_id: `sensor.volet_${device.name}_last_seen`,
                     unique_id: `idiamant_${device.id}_last_seen`,
                     name: 'Dernière vue',
                     force_update: true,
@@ -249,7 +249,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_etat`]: {
                     platform: 'binary_sensor',
-                    object_id: `volet_${device.name}_connected`,
+                    default_entity_id: `binary_sensor.volet_${device.name}_connected`,
                     unique_id: `idiamant_${device.id}_connected`,
                     name: 'État',
                     force_update: true,
@@ -260,7 +260,7 @@ class haDiscoveryHelper {
                 },
                 [`idiamant_${device.name}_cover`]: {
                     platform: 'cover',
-                    object_id: `volet_${device.name}_cover`,
+                    default_entity_id: `cover.volet_${device.name}_cover`,
                     unique_id: `idiamant_${device.id}_cover`,
                     name: `Volet ${device.name.charAt(0).toUpperCase() + device.name.slice(1)}`,
                     command_topic: `${stateTopic}/cmd`,
