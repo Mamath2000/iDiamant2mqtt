@@ -1,25 +1,23 @@
-version: '3.8'
-
 services:
   idiamant2mqtt:
     image: mathmath350/idiamant2mqtt:latest
     container_name: idiamant2mqtt
     restart: unless-stopped
-    
+
     # Configuration via fichier monté
     volumes:
       - ./config.conf:/app/config.conf:ro
       - ./logs:/app/logs
-    
+
     # Variables d'environnement Docker
     environment:
       - DOCKER_ENV=true
       - NODE_ENV=production
-    
+
     # Exposition du port pour le serveur d'authentification
     ports:
       - "3000:3000"
-    
+
     # Health check
     healthcheck:
       test: ["CMD", "node", "/app/src/utils/docker-health.js"]
@@ -27,7 +25,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    
+
     # Configuration des logs pour Docker
     logging:
       driver: "json-file"
